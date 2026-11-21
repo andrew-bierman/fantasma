@@ -33,7 +33,12 @@ enum FantasmaCLI {
     }
 
     private static func post(_ name: Notification.Name) {
-        DistributedNotificationCenter.default().post(name: name, object: nil)
+        // deliverImmediately is required: default posts are tied to the
+        // poster's app context and get dropped by the fast-exiting CLI
+        // process before notifyd delivers them.
+        DistributedNotificationCenter.default().postNotificationName(
+            name, object: nil, userInfo: nil, deliverImmediately: true
+        )
     }
 
     private static func printShowConfig() {

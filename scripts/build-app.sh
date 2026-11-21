@@ -51,6 +51,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <string>${VERSION}</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSAppSleepDisabled</key>
+    <true/>
 </dict>
 </plist>
 PLIST
