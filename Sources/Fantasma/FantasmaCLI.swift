@@ -2,11 +2,12 @@ import AppKit
 import GhosttyTheme
 
 /// The binary doubles as a CLI (mirroring Ghostty's `+action` convention):
-/// `fantasma +new-window`, `+toggle-float`, `+show-config`, `+list-themes`.
-/// Actions are posted over DistributedNotificationCenter to the running
-/// instance, or handled locally and printed when no instance is needed.
+/// `fantasma +new-window`, `+toggle-float`, `+show-config`, `+list-themes`,
+/// `+reload-config`. Actions are posted over DistributedNotificationCenter
+/// to the running instance, or handled locally and printed when no instance
+/// is needed.
 enum FantasmaCLI {
-    static let actions = ["+new-window", "+toggle-float", "+show-config", "+list-themes"]
+    static let actions = ["+new-window", "+toggle-float", "+show-config", "+list-themes", "+reload-config"]
 
     /// Returns true when the arguments name a CLI action (caller should not
     /// continue into the app).
@@ -19,6 +20,8 @@ enum FantasmaCLI {
             post(.fantasmaNewWindow)
         case "+toggle-float":
             post(.fantasmaToggleFloat)
+        case "+reload-config":
+            post(.fantasmaReloadConfig)
         case "+show-config":
             printShowConfig()
         case "+list-themes":

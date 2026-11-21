@@ -5,4 +5,5 @@ import Foundation
 extension Notification.Name {
     static let fantasmaNewWindow = Notification.Name("com.andrewbierman.fantasma.new-window")
     static let fantasmaToggleFloat = Notification.Name("com.andrewbierman.fantasma.toggle-float")
+    static let fantasmaReloadConfig = Notification.Name("com.andrewbierman.fantasma.reload-config")
 }
