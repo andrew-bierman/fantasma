@@ -75,7 +75,7 @@ Open Questions: none blocking.
 ### Key Technical Decisions
 
 - KTD13. Config is a flat `key = value` file parsed by a small hand-written reader (~40 lines) — no TOML/INI dependency for four keys; read once at launch (restart to apply is documented, not a watcher). Governs R16, R20.
-- KTD14. `clear_on_open = true` implements dismissal as surface teardown (controller released, PTY ends) at hide time, with `show()` creating a fresh surface; `false` keeps the v1 orderOut-only path. The overlay never blocks on teardown. Governs R17.
+- KTD14. `clear_on_open = true` implements dismissal as surface teardown (controller released, PTY ends) at hide time, with `show()` creating a fresh surface; `false` keeps the v1 orderOut-only path. The overlay never blocks on teardown. **Close-cause discipline (extends v1 KTD9):** a surface carries an `expectedTeardown` state set before programmatic release; `terminalDidClose` ignores expected teardowns and only routes *spontaneous* shell death to the quit path — otherwise every dismissal under the default config would quit the whole app. Governs R17.
 - KTD15. Modes are distinguished by window title — the overlay sets `fantasma-float` (invisible in a borderless window but present to AX/yabai), normal windows use `fantasma` — so yabai rules can exempt the float by title while tiling everything else, the same pattern the foot-float integration used. Governs R18, R19.
 - KTD16. The windowed-mode trigger is a DistributedNotificationCenter broadcast: the binary invoked with `--new-window` posts `com.andrewbierman.fantasma.new-window` and exits; the running instance observes it and opens a normal window. Chosen over `open --args` (ignored for running apps) and over URL schemes (plist work for one trigger). Governs R19.
 - KTD17. Normal windows are plain titled `NSWindow`s (standard level, no floating, no all-spaces collection behaviors) hosting their own `TerminalSurface`; overlay-specific behaviors (pin, auto-hide, edge resizer) do not apply to them. Governs R19.
@@ -96,7 +96,7 @@ Un-validated agent bets, recorded because this run proceeds without a scoping co
 
 ### Sources and Research
 
-- libghostty-spm 3.0.1 checkout (resolved API: `TerminalController(configSource:theme:terminalConfiguration:)`, `TerminalSurfaceOptions(backend:workingDirectory:envVars:command:)`, delegates) — read directly this session.
+- libghostty-spm 1.6.20261003 checkout (resolved API: `TerminalController(configSource:theme:terminalConfiguration:)`, `TerminalSurfaceOptions(backend:workingDirectory:envVars:command:)`, delegates) — read directly this session.
 - justty (`0x96f/justty`) `TerminalSession.swift` — surface-per-window pattern already ported in v1.
 - foot's two-mode model (client vs `foot float`) — the product shape KD7 names.
 - v1 plan KTDs 1–12 and this session's prototype findings (referenced, not restated).
@@ -125,10 +125,11 @@ Un-validated agent bets, recorded because this run proceeds without a scoping co
 - **Requirements:** R17.
 - **Dependencies:** U1.
 - **Files:** `Sources/Fantasma/TerminalSurface.swift`, `Sources/Fantasma/AppDelegate.swift`.
-- **Approach:** `TerminalSurface` takes resolved config (theme name → catalog lookup, font size and padding into the builder); hide path consults `clear_on_open`: teardown (KTD14) vs orderOut; show path creates a fresh surface when the previous one was torn down. Overlay window title set to `fantasma-float` (R18, KTD15).
+- **Approach:** `TerminalSurface` takes resolved config (theme name → catalog lookup — an unknown name falls back to the package default theme, not Dracula, documented), font size and padding into the builder); hide path consults `clear_on_open`: teardown (KTD14, with expected-teardown state so the close delegate does not route it to quit) vs orderOut; show path creates a fresh surface when the previous one was torn down. Overlay window title set to `fantasma-float` (R18, KTD15).
+- **Requirements:** R17, R18.
 - **Test scenarios:**
   - Covers AE4. With `false`: run command, dismiss (focus loss), re-summon — output intact.
-  - With `true`: dismiss tears the surface down (shell process gone), re-summon shows a fresh prompt.
+  - With `true`: dismiss tears the surface down (shell process gone), re-summon shows a fresh prompt, **and the app does not quit** (live probe that the close delegate suppresses expected teardowns).
 - **Verification:** both variants exercised live via the AX loop; `swift test` still green.
 
 ### U3. Normal window mode
@@ -140,7 +141,7 @@ Un-validated agent bets, recorded because this run proceeds without a scoping co
 - **Approach:** KTD16 shim (post notification, exit when not the resident instance); KTD17 window (titled, standard level, own `TerminalSurface`, rounded corners not applied); Cmd+W closes the window and tears its surface down; overlay float and normal windows coexist. Shell exit in a normal window closes that window only.
 - **Test scenarios:**
   - Covers AE5. Invoke `--new-window` while running: titled window appears, independent shell (command in one does not affect the other).
-  - Edge case: shim invoked with no running instance — exits quietly (or launches the app, per implementation, documented).
+  - Edge case: shim invoked with no running instance — posts to nothing and exits quietly (KTD16).
   - Edge case: Cmd+W on the normal window closes it and ends only its shell; the float is unaffected.
 - **Verification:** live AX loop — both windows present simultaneously, distinct processes' shells verified by marker files.
 - **Execution note:** smoke-first on the live desktop; unit coverage not practical for window choreography.
@@ -161,7 +162,7 @@ Un-validated agent bets, recorded because this run proceeds without a scoping co
 - **Requirements:** none in this repo.
 - **Dependencies:** U3 merged.
 - **Files:** in andrew-bierman/dotfiles: `yabai/yabairc`, `README.md`, `tests/test_foot.py`.
-- **Approach:** Replace `app="^Fantasma$" manage=off` with `app="^Fantasma$" title="^fantasma-float$" manage=off`; document both Tinycast commands; update the regression tests. Lands as its own squash-merged PR per that repo's rules.
+- **Approach:** **Add** `app="^Fantasma$" title="^fantasma-float$" manage=off` (no Fantasma rule exists in the dotfiles repo today — the v1 exemption was session-scoped only); document both Tinycast commands; update the regression tests. Lands as its own squash-merged PR per that repo's rules.
 - **Test scenarios:** Test expectation: none — covered by the dotfiles repo's own test suite.
 - **Verification:** dotfiles tests green; PR open and merged.
 
@@ -174,8 +175,8 @@ Un-validated agent bets, recorded because this run proceeds without a scoping co
 | Build | `swift build -c release` | Compiles |
 | Unit tests | `swift test` | Config parser (red-first), geometry, resize |
 | Bundle | `scripts/build-app.sh` | Launchable app |
-| Smoke | `scripts/smoke.sh` | AE1–AE3 regression |
-| Mode loop | live AX script | AE4–AE5: config variants, both modes, independence |
+| Smoke | `scripts/smoke.sh` | AE1 + AE3 regression (with `clear_on_open = false`; the true default intentionally changes AE2, covered by the mode loop) |
+| Mode loop | live AX script + title-scoped session yabai rule | AE4–AE5: config variants, both modes, independence, SC5 tiling |
 | Manual | live desktop | SC4–SC5 |
 
 ---
