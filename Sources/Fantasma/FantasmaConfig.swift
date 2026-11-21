@@ -19,6 +19,8 @@ struct FantasmaConfig: Equatable {
     /// Raw `hotkey` binding string, e.g. "cmd+grave". Empty (the default)
     /// disables the global hotkey; the raw value is parsed at registration.
     var hotkey = ""
+    var themeLight: String? = nil
+    var themeDark: String? = nil
 }
 
 enum FantasmaConfigLoader {
@@ -156,6 +158,12 @@ enum FantasmaConfigLoader {
         }
         if let hotkey = values["hotkey"] {
             config.hotkey = hotkey
+        }
+        if let light = values["theme_light"], !light.isEmpty {
+            config.themeLight = light
+        }
+        if let dark = values["theme_dark"], !dark.isEmpty {
+            config.themeDark = dark
         }
         return config
     }

@@ -141,6 +141,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil,
             suspensionBehavior: .deliverImmediately
         )
+        // System light/dark switch: retint theme pairs live, no restart
+        // (deliverImmediately — napping accessory apps drop coalesced posts).
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(systemAppearanceChanged(_:)),
+            name: .appleInterfaceThemeChanged,
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
 
         self.window = window
         show()
@@ -261,6 +270,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         toggle()
     }
 
+    /// System appearance flipped: apply the pair's matching side to every
+    /// live surface in place (shells keep running). The controller no-ops
+    /// on repeated identical themes, so duplicate posts are harmless.
+    @objc private func systemAppearanceChanged(_ notification: Notification) {
+        let name = TerminalSurface.effectiveThemeName(for: config)
+        surface?.applyTheme(named: name)
+        for controller in normalWindows {
+            controller.applyTheme(named: name)
+        }
+    }
+
     @objc private func reloadConfigRequested(_ notification: Notification) {
         let previous = config
         config = FantasmaConfigLoader.load()
@@ -274,6 +294,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // until relaunch.
         guard config.clearOnOpen, let window else { return }
         let surfaceChanged = config.theme != previous.theme
+            || config.themeLight != previous.themeLight
+            || config.themeDark != previous.themeDark
             || config.fontSize != previous.fontSize
             || config.padding != previous.padding
             || config.fontFamily != previous.fontFamily

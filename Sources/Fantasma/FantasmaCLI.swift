@@ -52,6 +52,8 @@ enum FantasmaCLI {
             "normal_title_bar = \(config.normalTitleBar)",
         ]
         if let family = config.fontFamily { lines.append("font_family = \(family)") }
+        if let light = config.themeLight { lines.append("theme_light = \(light)") }
+        if let dark = config.themeDark { lines.append("theme_dark = \(dark)") }
         if let width = config.floatWidth { lines.append("float_width = \(width)") }
         if let height = config.floatHeight { lines.append("float_height = \(height)") }
         if let x = config.floatX { lines.append("float_x = \(x)") }
