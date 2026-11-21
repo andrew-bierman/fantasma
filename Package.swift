@@ -15,5 +15,9 @@ let package = Package(
                 .product(name: "GhosttyTheme", package: "libghostty-spm"),
             ]
         ),
+        .testTarget(
+            name: "FantasmaTests",
+            dependencies: ["Fantasma"]
+        ),
     ]
 )

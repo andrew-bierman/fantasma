@@ -9,13 +9,12 @@ enum OverlayGeometry {
     static let topInset: CGFloat = 110
 
     static func frame(for visibleFrame: NSRect) -> NSRect {
-        let width = min(defaultSize.width, max(visibleFrame.width, minimumSize.width))
-        let height = min(defaultSize.height, max(visibleFrame.height, minimumSize.height))
+        // Placement never exceeds the visible frame; the minimum size floor
+        // governs interactive resizing (contentMinSize), not placement.
+        let width = min(defaultSize.width, visibleFrame.width)
+        let height = min(defaultSize.height, visibleFrame.height)
         let x = visibleFrame.midX - width / 2
-        let y = min(
-            visibleFrame.maxY - topInset - height,
-            visibleFrame.maxY - height
-        )
+        let y = visibleFrame.maxY - topInset - height
         return NSRect(
             x: max(visibleFrame.minX, x),
             y: max(visibleFrame.minY, y),

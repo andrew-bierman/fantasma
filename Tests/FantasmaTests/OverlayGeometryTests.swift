@@ -11,11 +11,25 @@ final class OverlayGeometryTests: XCTestCase {
         XCTAssertEqual(frame.maxY, visible.maxY - OverlayGeometry.topInset, accuracy: 0.5)
     }
 
-    func testFrameNeverDropsBelowMinimumSize() {
+    func testFrameFitsVisibleFrameBetweenMinimumAndDefault() {
+        // Visible frame larger than the minimum but smaller than the default:
+        // the window fills what fits rather than overhanging.
         let visible = NSRect(x: 0, y: 0, width: 400, height: 240)
         let frame = OverlayGeometry.frame(for: visible)
-        XCTAssertEqual(frame.width, OverlayGeometry.minimumSize.width)
-        XCTAssertEqual(frame.height, OverlayGeometry.minimumSize.height)
+        XCTAssertEqual(frame.width, 400)
+        XCTAssertEqual(frame.height, 240)
+    }
+
+    func testScreenSmallerThanMinimumStaysOnScreen() {
+        // A screen smaller than the minimum cannot host the floor size;
+        // staying fully on-screen wins over the floor (the floor governs
+        // user resizing, which cannot shrink below the screen anyway).
+        let visible = NSRect(x: 0, y: 0, width: 200, height: 150)
+        let frame = OverlayGeometry.frame(for: visible)
+        XCTAssertGreaterThanOrEqual(frame.minX, visible.minX)
+        XCTAssertGreaterThanOrEqual(frame.minY, visible.minY)
+        XCTAssertLessThanOrEqual(frame.maxX, visible.maxX)
+        XCTAssertLessThanOrEqual(frame.maxY, visible.maxY)
     }
 
     func testFrameStaysInsideVisibleFrame() {
