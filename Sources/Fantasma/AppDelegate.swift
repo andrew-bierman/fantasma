@@ -4,7 +4,9 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: OverlayWindow?
     private var surface: TerminalSurface?
-    private var ignoresFocusLoss = false
+    private var gate = SummonGate()
+    private var activationRetry: DispatchWorkItem?
+    private var armHold: DispatchWorkItem?
     private var keyMonitor: Any?
     private var reopenTimestamp: Date?
     private var isQuitting = false
@@ -211,16 +213,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func focusLost(_ notification: Notification) {
-        guard !pinned, !ignoresFocusLoss else { return }
-        hide()
+        guard !pinned else { return }
+        switch gate.focusLost() {
+        case .hide:
+            fantasmaLog("focus lost → hide")
+            hide()
+        case .reattempt:
+            // Never resurrect a hidden window; only fight back while visible.
+            guard let window, window.isVisible, activationRetry == nil, armHold == nil else { return }
+            fantasmaLog("focus lost during summon → re-activate")
+            activateAttempt()
+        case .ignore:
+            break
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
         // Cmd-Tab back to a hidden Fantasma must re-summon the float —
         // activation alone leaves the app active with no visible window
         // and dead input. Ignore activation during our own hide path.
-        guard !pinned, !isQuitting, let window, !window.isVisible else { return }
-        show()
+        guard !pinned, !isQuitting, let window else { return }
+        if !window.isVisible {
+            show()
+        } else if !gate.armed, activationRetry == nil, armHold == nil {
+            // Fresh launch: LaunchServices activation arrived after show()'s
+            // handshake ran; complete it now.
+            activateAttempt()
+        }
     }
 
     @objc private func newWindowRequested(_ notification: Notification) {
@@ -346,19 +365,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func show() {
         guard let window else { return }
-        ignoresFocusLoss = true
+        gate.showRequested()
+        cancelSummonTimers()
         if surface == nil {
             attachSurface(
                 to: window,
                 frame: NSRect(origin: .zero, size: window.frame.size)
             )
         }
-        NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         focusContent()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.ignoresFocusLoss = false
+        fantasmaLog("show")
+        activateAttempt()
+    }
+
+    /// Fight for focus until it actually sticks, instead of assuming a fixed
+    /// latch is long enough: launch activation and WM focus bounce can both
+    /// arrive later than any constant we pick.
+    private func activateAttempt() {
+        guard let window, !gate.dismissed else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        switch gate.activationCheck(isActive: NSApp.isActive, isKey: window.isKeyWindow) {
+        case .focused:
+            fantasmaLog("activation focused — arm hold starts")
+            scheduleArmHold()
+        case .retry:
+            fantasmaLog("activation retry in 0.25s (\(gate.attemptsLeft) left)")
+            let work = DispatchWorkItem { [weak self] in self?.activateAttempt() }
+            activationRetry = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+        case .gaveUp:
+            fantasmaLog("activation gave up: active=\(NSApp.isActive) key=\(window.isKeyWindow)")
         }
+    }
+
+    private func scheduleArmHold() {
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let window = self.window else { return }
+            if self.gate.holdElapsed(isActive: NSApp.isActive, isKey: window.isKeyWindow) {
+                fantasmaLog("armed")
+            } else {
+                fantasmaLog("focus lost mid-hold — re-attempting")
+                self.activateAttempt()
+            }
+        }
+        armHold = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+    }
+
+    private func cancelSummonTimers() {
+        activationRetry?.cancel()
+        activationRetry = nil
+        armHold?.cancel()
+        armHold = nil
     }
 
     private func focusContent() {
@@ -376,7 +435,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func hide() {
+        // Dismiss the gate first: orderOut fires didResignKey, and an
+        // armed gate would route that into a re-summon fight.
+        cancelSummonTimers()
+        gate.hid()
         guard let window, window.isVisible else { return }
+        fantasmaLog("hide")
         window.orderOut(nil)
         // clear_on_open (R17): the shell dies here by design; the surface's
         // expected-teardown state keeps this off the quit path (KTD14).
