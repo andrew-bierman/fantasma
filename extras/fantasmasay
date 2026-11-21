@@ -1,4 +1,17 @@
 #!/usr/bin/env bash
-# fantasmasay — a friendly ghost says your words (requires cowsay)
+# fantasmasay — the mascot ghost says your words.
+# Usage: fantasmasay "boo. terminals should float."
+set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec cowsay -f "$DIR/ghost.cow" "$@"
+MSG="${*:-boo.}"
+
+# Speech bubble sized to the message (single line, first line if multiline).
+FIRST="$(printf '%s\n' "$MSG" | head -1)"
+LEN=${#FIRST}
+TOP="$(printf '_%.0s' $(seq 1 $((LEN + 2))))"
+BOT="$(printf '%s' "$(printf '_%.0s' $(seq 1 $((LEN + 2))))" | tr '_' '¯')"
+
+printf ' %s\n' "$TOP"
+printf '< %s >\n' "$FIRST"
+printf ' %s\n' "$BOT"
+cat "$DIR/ghost.txt"
