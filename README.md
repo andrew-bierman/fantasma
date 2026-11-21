@@ -121,8 +121,8 @@ yabai -m rule --add app="^Fantasma$" title="^fantasma-float$" manage=off
 
 ## Extras
 
-`extras/fantasmasay "boo. terminals should float."` — the mascot ghost says
-your words. Self-contained (ASCII generated from the app icon).
+`extras/fantasmasay "boo. terminals should float."` — a friendly ghost says
+your words. Self-contained, no dependencies.
 
 ## Status
 
