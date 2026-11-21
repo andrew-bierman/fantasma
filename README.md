@@ -11,7 +11,7 @@ windows** your tiling manager treats like any other app. Built on
 engine, packaged for Apple platforms).
 
 <p align="center">
-  <img src="docs/screenshots/tiled.png" width="640" alt="A Fantasma tiled window — chrome-less, fastfetch, Dracula">
+  <img src="docs/screenshots/tiled.png" width="640" alt="A Fantasma tiled window — chrome-less, with a retro Macintosh 128K mock fetch">
 </p>
 
 No tabs. No splits. A quick terminal and regular windows, done well.
