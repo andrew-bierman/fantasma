@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var keyMonitor: Any?
     private var reopenTimestamp: Date?
     private var isQuitting = false
+    private var normalWindows: [NormalWindowController] = []
     private let pinned = CommandLine.arguments.contains("--pin")
     private let config = FantasmaConfigLoader.load()
 
@@ -57,22 +58,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
 
-        // A borderless window has no menu bar to carry key equivalents (KTD6).
+        // A borderless window has no menu bar to carry key equivalents
+        // (KTD6); normal windows need the same treatment for Cmd+W.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.window === self?.window,
-                  event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.function) == .command
+            guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.function) == .command
             else { return event }
-            switch event.charactersIgnoringModifiers {
-            case "w":
-                self?.hide()
-                return nil
-            case "q":
-                NSApp.terminate(nil)
-                return nil
-            default:
-                return event
+            if event.window === self?.window {
+                switch event.charactersIgnoringModifiers {
+                case "w":
+                    self?.hide()
+                    return nil
+                case "q":
+                    NSApp.terminate(nil)
+                    return nil
+                default:
+                    return event
+                }
             }
+            if let normal = self?.normalWindows.first(where: { $0.window === event.window }),
+               event.charactersIgnoringModifiers == "w" {
+                normal.close()
+                return nil
+            }
+            return event
         }
+
+        // Windowed-mode trigger: the binary invoked with --new-window posts
+        // this notification and exits (KTD16).
+        DistributedNotificationCenter.default.addObserver(
+            self,
+            selector: #selector(newWindowRequested(_:)),
+            name: Notification.Name("com.andrewbierman.fantasma.new-window"),
+            object: nil
+        )
 
         self.window = window
         show()
@@ -83,6 +101,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyMonitor = nil
         surface?.teardown()
         surface = nil
+        for controller in normalWindows {
+            controller.window.delegate = nil
+            controller.close()
+        }
+        normalWindows.removeAll()
     }
 
     @objc private func windowDidResize(_ notification: Notification) {
@@ -92,6 +115,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func focusLost(_ notification: Notification) {
         guard !pinned, !ignoresFocusLoss else { return }
         hide()
+    }
+
+    @objc private func newWindowRequested(_ notification: Notification) {
+        openNormalWindow()
+    }
+
+    func openNormalWindow() {
+        let controller = NormalWindowController(config: config)
+        controller.onClosed = { [weak self] finished in
+            self?.normalWindows.removeAll { $0 === finished }
+        }
+        normalWindows.append(controller)
+        controller.show()
     }
 
     private func quitFromShellExit() {
