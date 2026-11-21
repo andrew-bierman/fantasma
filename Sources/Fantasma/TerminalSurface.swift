@@ -26,6 +26,9 @@ final class TerminalSurface: NSObject {
     /// engine-side settings: false keeps links rendered (that lives in the
     /// engine) but the open path below drops every request.
     private let allowsLinkOpen: Bool
+    /// Whether a pointing-hand cursor is currently pushed on the AppKit
+    /// cursor stack; every push is paired with exactly one pop.
+    private var hoverCursorPushed = false
 
     private static let termName = "xterm-256color"
 
@@ -110,6 +113,10 @@ final class TerminalSurface: NSObject {
         guard !isTearingDown else { return }
         isTearingDown = true
         shellHasExited = true
+        if hoverCursorPushed {
+            NSCursor.pop()
+            hoverCursorPushed = false
+        }
         terminalView.controller = nil
     }
 
@@ -229,5 +236,23 @@ extension TerminalSurface: TerminalSurfaceOpenURLDelegate {
         // in the scheme allowlist, so every kind flows through it alike.
         guard allowsLinkOpen, let parsed = Self.openableURL(from: url) else { return }
         NSWorkspace.shared.open(parsed)
+    }
+}
+
+extension TerminalSurface: TerminalSurfaceHoverLinkDelegate {
+    func terminalDidUpdateHoverLink(_ url: String?) {
+        // The engine never touches NSCursor, so this pushed pointing hand
+        // is the only cursor state Fantasma owns on the stack; hover end
+        // (nil) and teardown each pop exactly once. With link_url off the
+        // gate drops opens, so the affordance must not advertise them.
+        if url != nil, allowsLinkOpen {
+            if !hoverCursorPushed {
+                NSCursor.pointingHand.push()
+                hoverCursorPushed = true
+            }
+        } else if hoverCursorPushed {
+            NSCursor.pop()
+            hoverCursorPushed = false
+        }
     }
 }
