@@ -9,15 +9,16 @@ VERSION="$(cat "$ROOT/VERSION" 2>/dev/null | tr -d '[:space:]')"
 VERSION="${VERSION:-0.0.0}"
 
 swift build -c release
+RELEASE_DIR="$(swift build -c release --show-bin-path)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$ROOT/.build/release/Fantasma" "$APP/Contents/MacOS/$APP_NAME"
+cp "$RELEASE_DIR/Fantasma" "$APP/Contents/MacOS/$APP_NAME"
 chmod +x "$APP/Contents/MacOS/$APP_NAME"
 
 # SPM resource bundles (Ghostty's shell integration + terminfo) must ship
 # inside the app or ghostty_init crashes at launch.
-find "$ROOT/.build" -maxdepth 4 -name "*.bundle" -type d 2>/dev/null | while read -r bundle; do
+for bundle in "$RELEASE_DIR"/*.bundle; do
     # -f: SPM marks cached bundle files read-only (444); a pre-existing
     # destination (cached CI workspace) would fail a plain overwrite.
     cp -Rf "$bundle" "$APP/Contents/Resources/"
