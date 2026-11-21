@@ -106,10 +106,9 @@ enum HotkeyParser {
         keyCodes[token].map(UInt32.init)
     }
 
-    /// Whether a config reload must rebind the global hotkey. Pure string
-    /// comparison on the raw values: any difference — enabling, disabling,
-    /// or switching combos — means the registered Carbon hotkey no longer
-    /// matches the config.
+    /// Whether a config reload must rebind the global hotkey. Compares the
+    /// raw config strings: parse-equivalent variants (whitespace, case)
+    /// still differ, so a whitespace-only edit rebinds conservatively.
     static func changed(previous: String, current: String) -> Bool {
         previous != current
     }

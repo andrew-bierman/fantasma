@@ -53,6 +53,7 @@ enum FantasmaConfigLoader {
             # float_x = 200            # omitted: centered horizontally
             # float_y = 110            # omitted: 110pt from the top
             # link_url = true          # false: links still render but cmd-click never opens
+            # remember_frame = true    # false: float always places from config/defaults
             """.write(toFile: resolved, atomically: true, encoding: .utf8)
         }
         return resolved

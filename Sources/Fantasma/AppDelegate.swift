@@ -33,7 +33,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for: visibleFrame,
             // Precedence (see FloatFrameState): config wins over the
             // persisted frame, the persisted frame wins over defaults.
-            // remember_frame = false skips the state file entirely (KTD2).
             config: FloatFrameState.merged(
                 into: config,
                 state: config.rememberFrame
