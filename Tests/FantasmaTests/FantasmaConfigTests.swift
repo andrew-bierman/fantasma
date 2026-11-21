@@ -145,6 +145,22 @@ final class FantasmaConfigTests: XCTestCase {
         XCTAssertEqual(garbage.rememberFrame, true)
     }
 
+    func testUnreadablePrimaryConfigSignals() throws {
+        // An existing-but-unreadable primary config is a transient failure:
+        // the loader reports it instead of silently applying defaults.
+        let path = writeTemp("theme = Dracula")
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000], ofItemAtPath: path
+        )
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: path) }
+        let loaded = FantasmaConfigLoader.loadWithStatus(path: path)
+        XCTAssertEqual(loaded.primaryReadable, false)
+        // A MISSING primary file is legitimate "use defaults" — readable.
+        let missing = FantasmaConfigLoader.loadWithStatus(path: "/tmp/does-not-exist-fantasma.conf")
+        XCTAssertEqual(missing.primaryReadable, true)
+        XCTAssertEqual(missing.config, FantasmaConfig())
+    }
+
     func testUnknownKeysAndCommentsIgnored() {
         let path = writeTemp("""
         # comment
