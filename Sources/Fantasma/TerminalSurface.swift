@@ -25,14 +25,7 @@ final class TerminalSurface: NSObject {
     private static let termName = "xterm-256color"
 
     init(frame: NSRect, config: FantasmaConfig) {
-        let theme: TerminalTheme
-        if let cached = TerminalSurface.themeCache[config.theme] {
-            theme = cached
-        } else {
-            let built = TerminalSurface.resolvedTheme(named: config.theme)
-            TerminalSurface.themeCache[config.theme] = built
-            theme = built
-        }
+        let theme = TerminalSurface.cachedTheme(named: TerminalSurface.effectiveThemeName(for: config))
         controller = TerminalController(
             configSource: .none,
             theme: theme,
@@ -82,6 +75,31 @@ final class TerminalSurface: NSObject {
         fontZoom.apply(direction, on: terminalView)
     }
 
+    /// Swaps the theme in place for system appearance changes; the live
+    /// shell survives (the surface-rebuild path would kill it). No-ops when
+    /// the controller already holds the theme.
+    func applyTheme(named name: String) {
+        controller.setTheme(TerminalSurface.cachedTheme(named: name))
+    }
+
+    /// Theme pair resolution for a config: `theme_light`/`theme_dark` win
+    /// on their matching system appearance, everything else falls back to
+    /// `theme` (ThemePair).
+    static func effectiveThemeName(for config: FantasmaConfig) -> String {
+        ThemePair.effectiveName(
+            theme: config.theme,
+            light: config.themeLight,
+            dark: config.themeDark,
+            isDarkAppearance: systemPrefersDarkAppearance()
+        )
+    }
+
+    /// The app's effective interface appearance maps to the ThemePair side.
+    /// Increased-contrast variants resolve to their base appearance.
+    static func systemPrefersDarkAppearance() -> Bool {
+        NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+
     func teardown() {
         guard !isTearingDown else { return }
         isTearingDown = true
@@ -103,6 +121,17 @@ final class TerminalSurface: NSObject {
         default:
             return .default
         }
+    }
+
+    /// Memoized resolvedTheme: theme construction scans the catalog, so
+    /// repeated summons (and appearance swaps) reuse one build per name.
+    private static func cachedTheme(named name: String) -> TerminalTheme {
+        if let cached = themeCache[name] {
+            return cached
+        }
+        let built = resolvedTheme(named: name)
+        themeCache[name] = built
+        return built
     }
 
     private static func loginShellCommand() -> String {

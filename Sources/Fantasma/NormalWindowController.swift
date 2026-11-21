@@ -61,6 +61,12 @@ final class NormalWindowController: NSObject, NSWindowDelegate {
         surface.applyFontZoom(direction)
     }
 
+    /// Applies a theme to this window's surface in place; a system
+    /// appearance switch must not kill the window's live shell.
+    func applyTheme(named name: String) {
+        surface.applyTheme(named: name)
+    }
+
     /// Explicit close: tears the surface down (expected teardown — this
     /// window's shell ends but the app stays up) and notifies the owner.
     func close() {
