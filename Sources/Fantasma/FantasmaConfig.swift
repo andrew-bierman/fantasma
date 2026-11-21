@@ -22,6 +22,32 @@ enum FantasmaConfigLoader {
     static let defaultPath = "~/.config/fantasma/fantasma.conf"
     static let ghosttyPath = "~/.config/ghostty/config"
 
+    /// Expands the tilde-prefixed default path and creates the file with a
+    /// commented template when absent, so Settings… always has a target.
+    static func ensureDefaultFile() -> String {
+        let resolved = (defaultPath as NSString).expandingTildeInPath
+        if !FileManager.default.fileExists(atPath: resolved) {
+            try? FileManager.default.createDirectory(
+                atPath: (resolved as NSString).deletingLastPathComponent,
+                withIntermediateDirectories: true
+            )
+            try? """
+            # fantasma configuration
+            # theme = Dracula          # any bundled catalog name
+            # font_size = 13
+            # padding = 8
+            # clear_on_open = true     # false keeps the float's shell alive
+            # copy_on_select = true
+            # normal_title_bar = true  # false hides normal windows' title bar
+            # float_width = 960
+            # float_height = 620
+            # float_x = 200            # omitted: centered horizontally
+            # float_y = 110            # omitted: 110pt from the top
+            """.write(toFile: resolved, atomically: true, encoding: .utf8)
+        }
+        return resolved
+    }
+
     static func load(path: String? = nil, ghosttyPath: String? = nil) -> FantasmaConfig {
         var values: [String: String] = [:]
         merge_ghostty(into: &values, path: ghosttyPath)
