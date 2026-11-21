@@ -21,6 +21,10 @@ final class TerminalSurface: NSObject {
     /// Fired only on *spontaneous* shell death; expected teardowns never
     /// reach it.
     var onShellExit: (() -> Void)?
+    /// Fired on every OSC 7 report from the shell; the owner feeds it to
+    /// the shared LastWorkingDirectory tracker so later summons and new
+    /// windows can spawn where this surface last was.
+    var onWorkingDirectoryChange: ((String) -> Void)?
 
     /// The `link_url` gate, captured at surface creation like the other
     /// engine-side settings: false keeps links rendered (that lives in the
@@ -32,7 +36,7 @@ final class TerminalSurface: NSObject {
 
     private static let termName = "xterm-256color"
 
-    init(frame: NSRect, config: FantasmaConfig) {
+    init(frame: NSRect, config: FantasmaConfig, workingDirectory: String? = nil) {
         let theme = TerminalSurface.cachedTheme(named: TerminalSurface.effectiveThemeName(for: config))
         controller = TerminalController(
             configSource: .none,
@@ -64,7 +68,9 @@ final class TerminalSurface: NSObject {
         terminalView.configuration = TerminalSurfaceOptions(
             backend: .exec,
             fontSize: Float(config.fontSize),
-            workingDirectory: NSHomeDirectory(),
+            // Nil means "spawn at home" — the long-standing behaviour when
+            // no directory was carried over from a live surface.
+            workingDirectory: workingDirectory ?? NSHomeDirectory(),
             envVars: Self.surfaceEnvironment(),
             command: Self.loginShellCommand()
         )
@@ -196,6 +202,12 @@ extension TerminalSurface: TerminalSurfaceBellDelegate {
         // else; bouncing while Fantasma is frontmost is just noise.
         guard !NSApp.isActive else { return }
         NSApp.requestUserAttention(.informationalRequest)
+    }
+}
+
+extension TerminalSurface: TerminalSurfacePwdDelegate {
+    func terminalDidChangeWorkingDirectory(_ path: String) {
+        onWorkingDirectoryChange?(path)
     }
 }
 
