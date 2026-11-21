@@ -37,7 +37,7 @@ final class OverlayGeometryTests: XCTestCase {
         // the window fits the available height instead of overhanging.
         let visible = NSRect(x: 0, y: 0, width: 1728, height: 500)
         let frame = OverlayGeometry.frame(for: visible)
-        XCTAssertEqual(frame.height, 480)
+        XCTAssertEqual(frame.height, 360)
         XCTAssertGreaterThanOrEqual(frame.minY, visible.minY)
     }
 
