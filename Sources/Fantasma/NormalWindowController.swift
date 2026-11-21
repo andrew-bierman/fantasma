@@ -39,6 +39,9 @@ final class NormalWindowController: NSObject, NSWindowDelegate {
     }
 
     func show() {
+        // A normal window is a full app citizen: the regular policy brings
+        // the menu bar (Fantasma -> Settings…, Cmd+,) while it is focused.
+        NSApp.setActivationPolicy(.regular)
         surface.fitToSize()
         window.center()
         window.makeKeyAndOrderFront(nil)

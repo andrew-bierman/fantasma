@@ -56,6 +56,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         NotificationCenter.default.addObserver(
             self,
+            selector: #selector(windowDidBecomeKey(_:)),
+            name: NSWindow.didBecomeKeyNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
             selector: #selector(focusLost(_:)),
             name: NSApplication.didResignActiveNotification,
             object: nil
@@ -78,9 +84,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return event
                 }
             }
-            if let normal = self?.normalWindows.first(where: { $0.window === event.window }),
-               event.charactersIgnoringModifiers == "w" {
-                normal.close()
+            if let normal = self?.normalWindows.first(where: { $0.window === event.window }) {
+                switch event.charactersIgnoringModifiers {
+                case "w":
+                    normal.close()
+                    return nil
+                case ",":
+                    self?.openSettings(nil)
+                    return nil
+                default:
+                    return event
+                }
+            } else if event.window === self?.window, event.charactersIgnoringModifiers == "," {
+                self?.openSettings(nil)
                 return nil
             }
             return event
@@ -95,6 +111,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         self.window = window
         show()
+        installMainMenu()
+    }
+
+    /// The menu bar only exists while Fantasma runs with the regular
+    /// activation policy (a normal window is focused); the float returns to
+    /// accessory, which hides it again.
+    private func installMainMenu() {
+        let mainMenu = NSMenu()
+        let appItem = NSMenuItem()
+        mainMenu.addItem(appItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(NSMenuItem(
+            title: "About Fantasma",
+            action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+            keyEquivalent: ""
+        ))
+        appMenu.addItem(.separator())
+        appMenu.addItem(NSMenuItem(
+            title: "Settings…",
+            action: #selector(openSettings(_:)),
+            keyEquivalent: ","
+        ))
+        appMenu.addItem(.separator())
+        appMenu.addItem(NSMenuItem(
+            title: "Quit Fantasma",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        ))
+        appItem.submenu = appMenu
+
+        let windowItem = NSMenuItem()
+        mainMenu.addItem(windowItem)
+        let windowMenu = NSMenu(title: "Window")
+        windowItem.submenu = windowMenu
+        windowMenu.addItem(NSMenuItem(
+            title: "New Tiled Window",
+            action: #selector(newWindowRequested(_:)),
+            keyEquivalent: "n"
+        ))
+        windowMenu.addItem(NSMenuItem(
+            title: "Close Window",
+            action: #selector(NSWindow.performClose(_:)),
+            keyEquivalent: "w"
+        ))
+        windowMenu.addItem(NSMenuItem(
+            title: "Minimize",
+            action: #selector(NSWindow.performMiniaturize(_:)),
+            keyEquivalent: "m"
+        ))
+
+        NSApp.mainMenu = mainMenu
+    }
+
+    @objc private func openSettings(_ sender: Any?) {
+        let path = FantasmaConfigLoader.ensureDefaultFile()
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -133,13 +205,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openNormalWindow()
     }
 
-    private func openNormalWindow() {
-        let controller = NormalWindowController(config: config)
+    private func openNormalWindow() {        let controller = NormalWindowController(config: config)
         controller.onClosed = { [weak self] finished in
             self?.normalWindows.removeAll { $0 === finished }
+            // Last normal window closed: drop the menu bar by returning to
+            // accessory (the float re-upgrades to accessory on its own show).
+            if self?.normalWindows.isEmpty == true {
+                NSApp.setActivationPolicy(.accessory)
+            }
         }
         normalWindows.append(controller)
         controller.show()
+    }
+
+    @objc private func windowDidBecomeKey(_ notification: Notification) {
+        // Menu bar presence follows the focused window: a normal window
+        // upgrades to .regular (menu bar appears); the overlay never
+        // downgrades while active — losing the menu bar mid-activation
+        // would resign and self-hide.
+        guard let focused = notification.object as? NSWindow else { return }
+        if normalWindows.contains(where: { $0.window === focused }) {
+            NSApp.setActivationPolicy(.regular)
+        }
     }
 
     private func quitFromShellExit() {

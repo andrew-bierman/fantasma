@@ -26,7 +26,7 @@ final class TerminalSurface: NSObject {
         if let cached = TerminalSurface.themeCache[config.theme] {
             theme = cached
         } else {
-            let built = GhosttyThemeCatalog.theme(named: config.theme)?.toTerminalTheme() ?? .default
+            let built = TerminalSurface.resolvedTheme(named: config.theme)
             TerminalSurface.themeCache[config.theme] = built
             theme = built
         }
@@ -78,6 +78,22 @@ final class TerminalSurface: NSObject {
         isTearingDown = true
         shellHasExited = true
         terminalView.controller = nil
+    }
+
+    /// Resolves a theme by catalog name. Upstream note: the catalog registry
+    /// is empty at runtime in libghostty-spm 3.0.1, so the named lookup only
+    /// works once upstream fixes it; Dracula (our default) resolves via its
+    /// generated static directly.
+    private static func resolvedTheme(named name: String) -> TerminalTheme {
+        if let fromCatalog = GhosttyThemeCatalog.theme(named: name)?.toTerminalTheme() {
+            return fromCatalog
+        }
+        switch name.lowercased() {
+        case "dracula":
+            return GhosttyThemeDefinition.dracula.toTerminalTheme()
+        default:
+            return .default
+        }
     }
 
     private static func loginShellCommand() -> String {
