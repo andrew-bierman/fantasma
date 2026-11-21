@@ -32,14 +32,15 @@ enum FantasmaConfigLoader {
     // MARK: - Layers
 
     private static func merge_fantasma(into values: inout [String: String], path: String?) {
-        if let text = try? String(contentsOfFile: path ?? defaultPath, encoding: .utf8) {
+        let resolved = ((path ?? defaultPath) as NSString).expandingTildeInPath
+        if let text = try? String(contentsOfFile: resolved, encoding: .utf8) {
             mergeLines(text, into: &values)
         }
     }
 
     private static func merge_ghostty(into values: inout [String: String], path: String?) {
-        let resolved = (path ?? ghosttyPath) as NSString
-        guard let text = try? String(contentsOfFile: resolved as String, encoding: .utf8) else { return }
+        let resolved = ((path ?? ghosttyPath) as NSString).expandingTildeInPath
+        guard let text = try? String(contentsOfFile: resolved, encoding: .utf8) else { return }
         var ghosttyValues: [String: String] = [:]
         mergeLines(text, into: &ghosttyValues)
         // Map recognized Ghostty keys onto Fantasma's names; unrecognized
