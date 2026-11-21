@@ -34,11 +34,15 @@ final class NormalWindowController: NSObject, NSWindowDelegate {
         window.title = BusyTitle.idleTitle
         window.isReleasedWhenClosed = false
         if !config.normalTitleBar {
-            // Full-size content with a transparent, hidden title bar keeps
-            // the traffic lights while the bar strip disappears (KTD17).
+            // Full-size content with a transparent, hidden title bar AND
+            // hidden traffic lights: "no title bar" means chrome-less. ⌘W
+            // (local monitor) and ⌘M still close/miniaturize.
             window.styleMask.insert(.fullSizeContentView)
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
+            window.standardWindowButton(.closeButton)?.isHidden = true
+            window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+            window.standardWindowButton(.zoomButton)?.isHidden = true
         }
         surface = TerminalSurface(
             frame: NSRect(origin: .zero, size: NormalWindowController.defaultSize),
