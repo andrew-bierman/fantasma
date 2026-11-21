@@ -1,97 +1,112 @@
-name: release
-
-# Runs on version tags. Builds, tests, then — when signing secrets are
-# configured — Developer-ID-signs, notarizes, staples, publishes the release
-# asset and updates the Homebrew tap. Without secrets it still publishes,
-# just unsigned (ad-hoc signed by build-app.sh).
+name: macOS release
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a GitHub release from VERSION
+        type: boolean
+        default: false
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
+  group: macos-release
 
 jobs:
-  release:
-    runs-on: macos-15
-    timeout-minutes: 40
-    env:
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+  notarize:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    timeout-minutes: 30
+    environment: macos-notarization
+    outputs:
+      version: ${{ steps.package.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache SwiftPM + XCFramework
-        uses: actions/cache@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          path: |
-            .build
-            ~/Library/Caches/org.swift.swiftpm
-          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
+          persist-credentials: false
 
-      - name: Build + test
+      - name: Test and build
         run: |
-          swift build -c release
-          swift test
+          swift test -q
+          scripts/build-app.sh
 
-      - name: Assemble app bundle
-        run: scripts/build-app.sh
-
-      - name: Import Developer ID certificate
-        if: ${{ secrets.APPLE_CERTIFICATE_P12 != '' }}
+      - name: Sign and notarize
         env:
-          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          CERTIFICATE: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+          APPLE_TEAM_ID: '666HGMV2LU'
         run: |
-          CERT="$RUNNER_TEMP/cert.p12"
-          KEYCHAIN="$RUNNER_TEMP/build.keychain"
-          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > "$CERT"
-          security create-keychain -p fantasma-ci "$KEYCHAIN"
-          security default-keychain -s "$KEYCHAIN"
-          security import "$CERT" -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k fantasma-ci "$KEYCHAIN"
-          security list-keychain -d user -s "$KEYCHAIN" login.keychain-db
+          set -euo pipefail
+          : "${CERTIFICATE:?Missing DEVELOPER_ID_P12_BASE64}"
+          : "${CERTIFICATE_PASSWORD:?Missing DEVELOPER_ID_P12_PASSWORD}"
+          : "${APPLE_ID:?Missing APPLE_NOTARY_APPLE_ID}"
+          : "${APPLE_PASSWORD:?Missing APPLE_NOTARY_PASSWORD}"
 
-      - name: Sign + notarize + staple
-        if: ${{ secrets.APPLE_CERTIFICATE_P12 != '' }}
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-        run: |
+          umask 077
+          keychain="$RUNNER_TEMP/fantasma-signing.keychain-db"
+          certificate="$RUNNER_TEMP/fantasma-signing.p12"
+          keychain_password="$(openssl rand -hex 32)"
+          trap 'security delete-keychain "$keychain" || true; rm -f "$certificate"' EXIT
+          printf '%s' "$CERTIFICATE" | base64 -D > "$certificate"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security import "$certificate" -k "$keychain" -f pkcs12 \
+            -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
+
+          unset CERTIFICATE CERTIFICATE_PASSWORD
           scripts/notarize.sh
-          security delete-keychain "$RUNNER_TEMP/build.keychain" || true
+          codesign --verify --deep --strict Fantasma.app
+          syspolicy_check distribution Fantasma.app
 
-      - name: Zip
-        run: ditto -c -k --keepParent Fantasma.app "Fantasma-${GITHUB_REF_NAME#v}-arm64.zip"
+      - name: Package stapled app
+        id: package
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          ditto -c -k --keepParent Fantasma.app "Fantasma-$version-arm64.zip"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Publish release asset
+      - name: Upload signed ZIP
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: Fantasma-${{ steps.package.outputs.version }}-arm64
+          path: Fantasma-${{ steps.package.outputs.version }}-arm64.zip
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    if: inputs.publish
+    needs: notarize
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: Fantasma-${{ needs.notarize.outputs.version }}-arm64
+
+      - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-          ZIP: Fantasma-${{ github.ref_name }}-arm64.zip
+          VERSION: ${{ needs.notarize.outputs.version }}
         run: |
-          gh release upload "$TAG" "$ZIP" --clobber 2>/dev/null \
-            || gh release create "$TAG" "$ZIP" --title "Fantasma $TAG" \
-                 --notes "See commits since the previous release. Apple silicon build."
-
-      - name: Update Homebrew tap
-        if: ${{ secrets.TAP_TOKEN != '' }}
-        env:
-          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
-          TAG: ${{ github.ref_name }}
-          ZIP: Fantasma-${{ github.ref_name }}-arm64.zip
-        run: |
-          VERSION="${TAG#v}"
-          SHA256=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
-          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/andrew-bierman/homebrew-tap.git" /tmp/tap
-          sed -i '' -E "s/sha256 \".*\"/sha256 \"$SHA256\"/; s/version \".*\"/version \"$VERSION\"/" \
-            /tmp/tap/Casks/fantasma.rb
-          git -C /tmp/tap user.email "ci@fantasma.local" >/dev/null 2>&1 || git -C /tmp/tap config user.email "ci@fantasma.local"
-          git -C /tmp/tap config user.name "fantasma-ci"
-          git -C /tmp/tap add -A && git -C /tmp/tap commit -q -m "🔖 fantasma $VERSION"
-          git -C /tmp/tap push -q origin main
+          set -euo pipefail
+          tag="v$VERSION"
+          status=0
+          git ls-remote --exit-code --tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "refs/tags/$tag" || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "::error::Tag $tag already exists. Bump VERSION before publishing."
+            exit 1
+          fi
+          [ "$status" -eq 2 ] || exit "$status"
+          gh release create "$tag" "Fantasma-$VERSION-arm64.zip" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Fantasma $tag" --generate-notes

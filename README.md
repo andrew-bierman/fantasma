@@ -151,17 +151,20 @@ scripts/notarize.sh       # optional: Developer ID sign + notarize + staple
 Every PR that changes code must bump `VERSION` — a GitHub Action enforces it.
 Releases are cut only from `main`, and tags are immutable.
 
-Pushing a `v*` tag runs the release workflow: build, tests, then — when the
-signing secrets below are configured — Developer ID signing, notarization,
-stapling, release asset, and a Homebrew tap checksum update. Without secrets
-it publishes unsigned.
+Run **macOS release** from the GitHub Actions tab on `main`. The workflow tests,
+signs, notarizes, and uploads a stapled ZIP. Enable **Publish a GitHub release
+from VERSION** after bumping `VERSION` to an unused version. Update the
+Homebrew tap after publishing if you are distributing that version through it.
 
-| Secret | Meaning |
-|--------|---------|
-| `APPLE_CERTIFICATE_P12` | Base64 of the Developer ID Application `.p12` export |
-| `APPLE_CERTIFICATE_PASSWORD` | Password chosen when exporting the `.p12` |
-| `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | Notary service auth (`APPLE_PASSWORD` is an app-specific password) |
-| `TAP_TOKEN` | Optional: PAT with push access to `homebrew-tap`, for automatic cask updates |
+Store these secrets in the `macos-notarization` GitHub environment, restricted
+to the `main` branch.
+
+| Secret | Value |
+|--------|-------|
+| `DEVELOPER_ID_P12_BASE64` | Base64 of the Developer ID Application `.p12` export |
+| `DEVELOPER_ID_P12_PASSWORD` | Password for the `.p12` export |
+| `APPLE_NOTARY_APPLE_ID` | Apple Account email |
+| `APPLE_NOTARY_PASSWORD` | Apple app-specific password for CI |
 
 ## License
 
