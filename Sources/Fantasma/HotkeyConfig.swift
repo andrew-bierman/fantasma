@@ -112,4 +112,14 @@ enum HotkeyParser {
     static func changed(previous: String, current: String) -> Bool {
         previous != current
     }
+
+    /// The previous binding, when it was a usable combo — the rollback
+    /// target for the reload path's register-failure case. Nil for empty
+    /// (feature was off) and invalid (nothing was ever registered) values.
+    static func rollbackBinding(for raw: String) -> HotkeyBinding? {
+        if case .hotkey(let binding) = parse(raw) {
+            return binding
+        }
+        return nil
+    }
 }

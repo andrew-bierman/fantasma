@@ -320,16 +320,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func reloadConfigRequested(_ notification: Notification) {
         let previous = config
-        config = FantasmaConfigLoader.load()
-        guard config != previous else { return }
-        // A hotkey edit rebinds live, before the clear_on_open and
-        // surfaceChanged guards below: those return for unrelated changes
-        // and would leave a new binding dead until restart (R1, R3).
-        if HotkeyParser.changed(previous: previous.hotkey, current: config.hotkey) {
-            unregisterGlobalHotkey()
-            registerGlobalHotkey()
-            fantasmaLog("hotkey rebound: \"\(previous.hotkey)\" → \"\(config.hotkey)\"")
+        let loaded = FantasmaConfigLoader.loadWithStatus()
+        // An unreadable primary config is a transient failure, not the
+        // user clearing their settings — keep the previous config intact.
+        guard loaded.primaryReadable else {
+            fantasmaLog("config read failed; keeping previous config")
+            return
         }
+        config = loaded.config
+        guard config != previous else { return }
+        rebindHotkeyIfNeeded(previous: previous)
         // Hard rule: live shells survive a reload. New windows already read
         // `config` at creation, so every future surface picks up the new
         // values with no further work. The one safe in-place refresh is the
@@ -354,6 +354,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // focus from another app because a config file changed.
         if window.isKeyWindow {
             focusContent()
+        }
+    }
+
+    /// Named phase: rebind the global hotkey when a reload changed it.
+    /// Runs before the reload's early-return guards — a hotkey-only edit
+    /// must rebind even when `clear_on_open` or a surface no-op would
+    /// otherwise return. On Carbon register failure after a successful
+    /// unregister, rolls back to the previous working combo so a live
+    /// hotkey is never left dead.
+    private func rebindHotkeyIfNeeded(previous: FantasmaConfig) {
+        guard HotkeyParser.changed(previous: previous.hotkey, current: config.hotkey) else { return }
+        unregisterGlobalHotkey()
+        if registerHotkeyBinding(config.hotkey) {
+            fantasmaLog("hotkey rebound: \"\(previous.hotkey)\" → \"\(config.hotkey)\"")
+            return
+        }
+        if case .hotkey = HotkeyParser.parse(previous.hotkey),
+           registerHotkeyBinding(previous.hotkey) {
+            // Roll back the config field too, so +show-config and the next
+            // reload compare against the binding that is actually live.
+            config.hotkey = previous.hotkey
+            fantasmaLog("rebind failed; kept previous binding \"\(previous.hotkey)\"")
+        } else {
+            fantasmaLog("rebind failed; hotkey disabled")
         }
     }
 
@@ -644,18 +668,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Global hotkey
 
-    /// Carbon RegisterEventHotKey rather than an NSEvent global monitor:
-    /// an accessory app with no key windows still receives Carbon hotkey
-    /// events, and the keystroke is consumed. Empty config leaves the
-    /// feature off; invalid input warns and stays off. Fires the same
-    /// toggle path as the distributed toggle-float handler.
-    private func registerGlobalHotkey() {
-        switch HotkeyParser.parse(config.hotkey) {
+    /// Registers the configured binding. Returns false only when Carbon
+    /// rejected the install/register — a disabled or invalid config is a
+    /// carried-out "off" state, not a failure.
+    @discardableResult
+    private func registerHotkeyBinding(_ raw: String) -> Bool {
+        switch HotkeyParser.parse(raw) {
         case .disabled:
-            return
-        case .invalid(let raw):
-            fantasmaLog("hotkey config \"\(raw)\" is invalid — disabled (expected e.g. cmd+grave)")
-            return
+            return true
+        case .invalid(let rawValue):
+            fantasmaLog("hotkey config \"\(rawValue)\" is invalid — disabled (expected e.g. cmd+grave)")
+            return true
         case .hotkey(let binding):
             var eventTypes = [EventTypeSpec(
                 eventClass: OSType(kEventClassKeyboard),
@@ -682,7 +705,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             guard installStatus == noErr else {
                 fantasmaLog("hotkey handler install failed: \(installStatus)")
-                return
+                return false
             }
             var ref: EventHotKeyRef?
             let registerStatus = RegisterEventHotKey(
@@ -695,11 +718,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             guard registerStatus == noErr else {
                 fantasmaLog("hotkey register failed: \(registerStatus)")
-                return
+                // Clean the half-installed handler so the next attempt or
+                // rollback starts from a known-empty state.
+                unregisterGlobalHotkey()
+                return false
             }
             hotkeyRef = ref
             fantasmaLog("hotkey registered")
+            return true
         }
+    }
+
+    private func registerGlobalHotkey() {
+        registerHotkeyBinding(config.hotkey)
     }
 
     private func unregisterGlobalHotkey() {

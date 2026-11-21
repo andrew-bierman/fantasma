@@ -20,7 +20,14 @@ final class HotkeyConfigTests: XCTestCase {
         XCTAssertTrue(changed("", "cmd+grave"))
         XCTAssertTrue(changed("cmd+grave", ""))
         XCTAssertTrue(changed("cmd+grave", "ctrl+space"))
-        XCTAssertTrue(changed("cmd+grave", "ctrl+space"))
+    }
+
+    func testRollbackBindingForPreviousRaw() {
+        // A previous usable combo can be re-registered on rollback; empty
+        // and invalid previous bindings have nothing to roll back to.
+        XCTAssertNotNil(HotkeyParser.rollbackBinding(for: "cmd+grave"))
+        XCTAssertNil(HotkeyParser.rollbackBinding(for: ""))
+        XCTAssertNil(HotkeyParser.rollbackBinding(for: "bogus+keys"))
     }
 
     func testEmptyAndWhitespaceAreDisabled() {
