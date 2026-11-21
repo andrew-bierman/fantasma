@@ -105,4 +105,21 @@ enum HotkeyParser {
     private static func keyCode(for token: String) -> UInt32? {
         keyCodes[token].map(UInt32.init)
     }
+
+    /// Whether a config reload must rebind the global hotkey. Compares the
+    /// raw config strings: parse-equivalent variants (whitespace, case)
+    /// still differ, so a whitespace-only edit rebinds conservatively.
+    static func changed(previous: String, current: String) -> Bool {
+        previous != current
+    }
+
+    /// The previous binding, when it was a usable combo — the rollback
+    /// target for the reload path's register-failure case. Nil for empty
+    /// (feature was off) and invalid (nothing was ever registered) values.
+    static func rollbackBinding(for raw: String) -> HotkeyBinding? {
+        if case .hotkey(let binding) = parse(raw) {
+            return binding
+        }
+        return nil
+    }
 }

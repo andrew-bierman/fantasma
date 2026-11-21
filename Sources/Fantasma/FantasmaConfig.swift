@@ -22,6 +22,9 @@ struct FantasmaConfig: Equatable {
     var themeLight: String? = nil
     var themeDark: String? = nil
     var linkUrl = true
+    /// When false, the float ignores the persisted frame state file on
+    /// launch and skips writing it — placement comes from config/defaults.
+    var rememberFrame = true
 }
 
 enum FantasmaConfigLoader {
@@ -50,25 +53,40 @@ enum FantasmaConfigLoader {
             # float_x = 200            # omitted: centered horizontally
             # float_y = 110            # omitted: 110pt from the top
             # link_url = true          # false: links still render but cmd-click never opens
+            # remember_frame = true    # false: float always places from config/defaults
             """.write(toFile: resolved, atomically: true, encoding: .utf8)
         }
         return resolved
     }
 
     static func load(path: String? = nil, ghosttyPath: String? = nil) -> FantasmaConfig {
+        loadWithStatus(path: path, ghosttyPath: ghosttyPath).config
+    }
+
+    /// Load plus a primary-config readability signal. `primaryReadable` is
+    /// false only when the fantasma.conf file exists but could not be read —
+    /// the reload path keeps the previous config in that case instead of
+    /// silently applying defaults.
+    static func loadWithStatus(path: String? = nil, ghosttyPath: String? = nil)
+        -> (config: FantasmaConfig, primaryReadable: Bool) {
         var values: [String: String] = [:]
         merge_ghostty(into: &values, path: ghosttyPath)
-        merge_fantasma(into: &values, path: path)
-        return resolve(values)
+        let primaryReadable = merge_fantasma(into: &values, path: path)
+        return (resolve(values), primaryReadable)
     }
 
     // MARK: - Layers
 
-    private static func merge_fantasma(into values: inout [String: String], path: String?) {
+    /// Returns false only when the primary file exists but could not be
+    /// read — a transient failure the caller may want to distinguish from
+    /// a missing file (which is a legitimate "use defaults").
+    @discardableResult
+    private static func merge_fantasma(into values: inout [String: String], path: String?) -> Bool {
         let resolved = ((path ?? defaultPath) as NSString).expandingTildeInPath
-        if let text = try? String(contentsOfFile: resolved, encoding: .utf8) {
-            mergeLines(text, into: &values)
-        }
+        guard FileManager.default.fileExists(atPath: resolved) else { return true }
+        guard let text = try? String(contentsOfFile: resolved, encoding: .utf8) else { return false }
+        mergeLines(text, into: &values)
+        return true
     }
 
     private static func merge_ghostty(into values: inout [String: String], path: String?) {
@@ -169,6 +187,9 @@ enum FantasmaConfigLoader {
         }
         if let link = bool(values["link_url"]) {
             config.linkUrl = link
+        }
+        if let remember = bool(values["remember_frame"]) {
+            config.rememberFrame = remember
         }
         return config
     }

@@ -51,6 +51,7 @@ enum FantasmaCLI {
             "copy_on_select = \(config.copyOnSelect)",
             "normal_title_bar = \(config.normalTitleBar)",
             "link_url = \(config.linkUrl)",
+            "remember_frame = \(config.rememberFrame)",
         ]
         if let family = config.fontFamily { lines.append("font_family = \(family)") }
         if let light = config.themeLight { lines.append("theme_light = \(light)") }

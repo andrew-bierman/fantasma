@@ -7,6 +7,29 @@ final class HotkeyConfigTests: XCTestCase {
         HotkeyParser.parse(raw)
     }
 
+    private func changed(_ previous: String, _ current: String) -> Bool {
+        HotkeyParser.changed(previous: previous, current: current)
+    }
+
+    func testChangedIsFalseWhenBindingUnchanged() {
+        XCTAssertFalse(changed("cmd+grave", "cmd+grave"))
+        XCTAssertFalse(changed("", ""))
+    }
+
+    func testChangedIsTrueWhenBindingChanges() {
+        XCTAssertTrue(changed("", "cmd+grave"))
+        XCTAssertTrue(changed("cmd+grave", ""))
+        XCTAssertTrue(changed("cmd+grave", "ctrl+space"))
+    }
+
+    func testRollbackBindingForPreviousRaw() {
+        // A previous usable combo can be re-registered on rollback; empty
+        // and invalid previous bindings have nothing to roll back to.
+        XCTAssertNotNil(HotkeyParser.rollbackBinding(for: "cmd+grave"))
+        XCTAssertNil(HotkeyParser.rollbackBinding(for: ""))
+        XCTAssertNil(HotkeyParser.rollbackBinding(for: "bogus+keys"))
+    }
+
     func testEmptyAndWhitespaceAreDisabled() {
         XCTAssertEqual(parse(""), .disabled)
         XCTAssertEqual(parse("   "), .disabled)

@@ -4,6 +4,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: version-bump-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   enforce-bump:
     runs-on: ubuntu-latest

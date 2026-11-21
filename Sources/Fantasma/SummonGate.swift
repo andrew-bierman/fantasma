@@ -78,4 +78,13 @@ struct SummonGate {
         armed = false
         return .hide
     }
+
+    /// One bounded re-arm after a gave-up: the window stays visible but
+    /// unarmed, so grant fresh attempts without touching dismissed state.
+    /// The caller bounds this to once per summon.
+    mutating func grantRetry(attempts: Int = 2) {
+        attemptsLeft = attempts
+        holdingFocus = false
+        armed = false
+    }
 }

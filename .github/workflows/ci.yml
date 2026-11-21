@@ -8,13 +8,15 @@ on:
 
 # macOS runners bill at 10x minutes — keep to one short job, cache the
 # heavy XCFramework, skip GUI-dependent checks (those run locally).
+# The group is namespaced to this workflow: a shared `ci-${{ github.ref }}`
+# string let another workflow's run cancel build-test before it started.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-build-test-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-test:
-    runs-on: macos-14
+    runs-on: macos-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
