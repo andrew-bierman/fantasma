@@ -8,8 +8,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var keyMonitor: Any?
     private var reopenTimestamp: Date?
     private var isQuitting = false
-    /// Debug: `--pin` disables auto-hide so scripted probes can inspect the
-    /// window without fighting focus loss. Not used by normal operation.
     private let pinned = CommandLine.arguments.contains("--pin")
 
     private let cornerRadius: CGFloat = 14
@@ -39,46 +37,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         surface.onShellExit = { [weak self] in
             self?.quitFromShellExit()
         }
-        surface.terminalView.wantsLayer = true
-        surface.terminalView.layer?.cornerRadius = cornerRadius
-        surface.terminalView.layer?.masksToBounds = true
-        window.contentView = surface.terminalView
 
-        // Borderless windows get no standard edge-resize affordance from
-        // .resizable alone; the controller view supplies it (KTD11).
-        let edges = EdgeResizeControllerView(frame: contentFrame)
-        edges.translatesAutoresizingMaskIntoConstraints = false
-        surface.terminalView.addSubview(edges)
+        // The terminal view renders into its own Metal layer, which does not
+        // inherit corner clipping; a plain container owns the rounded mask.
+        let container = NSView(frame: contentFrame)
+        container.wantsLayer = true
+        container.layer?.cornerRadius = cornerRadius
+        container.layer?.masksToBounds = true
+        container.autoresizingMask = [.width, .height]
+        surface.terminalView.frame = contentFrame
+        surface.terminalView.autoresizingMask = [.width, .height]
+        container.addSubview(surface.terminalView)
+        window.contentView = container
+
+        let edgeResizer = EdgeResizeControllerView(frame: contentFrame)
+        edgeResizer.translatesAutoresizingMaskIntoConstraints = false
+        surface.terminalView.addSubview(edgeResizer)
         NSLayoutConstraint.activate([
-            edges.topAnchor.constraint(equalTo: surface.terminalView.topAnchor),
-            edges.bottomAnchor.constraint(equalTo: surface.terminalView.bottomAnchor),
-            edges.leadingAnchor.constraint(equalTo: surface.terminalView.leadingAnchor),
-            edges.trailingAnchor.constraint(equalTo: surface.terminalView.trailingAnchor),
+            edgeResizer.topAnchor.constraint(equalTo: surface.terminalView.topAnchor),
+            edgeResizer.bottomAnchor.constraint(equalTo: surface.terminalView.bottomAnchor),
+            edgeResizer.leadingAnchor.constraint(equalTo: surface.terminalView.leadingAnchor),
+            edgeResizer.trailingAnchor.constraint(equalTo: surface.terminalView.trailingAnchor),
         ])
 
-        // Keep the grid fitted to the window as it resizes.
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(windowDidResize(_:)),
             name: NSWindow.didResizeNotification,
             object: window
         )
-
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(windowDidResignKey(_:)),
+            selector: #selector(focusLost(_:)),
             name: NSWindow.didResignKeyNotification,
             object: window
         )
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(appDidResignActive(_:)),
+            selector: #selector(focusLost(_:)),
             name: NSApplication.didResignActiveNotification,
             object: nil
         )
 
-        // Cmd+W hides, Cmd+Q quits; a borderless window has no menu bar to
-        // carry key equivalents (KTD6).
+        // A borderless window has no menu bar to carry key equivalents (KTD6).
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard event.window === self?.window,
                   event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.function) == .command
@@ -101,13 +102,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // Tear the surface down explicitly so the PTY does not linger.
-        surface?.terminalView.controller = nil
+        NSEvent.removeMonitor(keyMonitor as Any)
+        keyMonitor = nil
+        surface?.teardown()
         surface = nil
     }
 
     @objc private func windowDidResize(_ notification: Notification) {
         surface?.fitToSize()
+    }
+
+    @objc private func focusLost(_ notification: Notification) {
+        guard !pinned, !ignoresFocusLoss else { return }
+        hide()
     }
 
     private func quitFromShellExit() {
@@ -141,7 +148,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func show() {
         guard let window else { return }
         ignoresFocusLoss = true
-        NSApp.setActivationPolicy(.accessory)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         focusContent()
@@ -152,36 +158,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func focusContent() {
         // The Ghostty surface becomes first responder via its own focus
-        // path; the binding lands only after the view mounts, so retry
-        // with a hard cap instead of spinning (KTD4).
+        // path; the binding lands only after the view mounts (KTD4).
         guard let window, let surface else { return }
-        surface.focus()
-        guard window.firstResponder === window else { return }
         var attempts = 0
-        func retry() {
-            guard attempts < 10 else { return }
-            attempts += 1
+        func attempt() {
             surface.focus()
-            if window.firstResponder === window {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { retry() }
-            }
+            guard window.firstResponder === window, window.isVisible, attempts < 10 else { return }
+            attempts += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { attempt() }
         }
-        retry()
+        attempt()
     }
 
     private func hide() {
         window?.orderOut(nil)
-    }
-
-    // MARK: - Focus loss
-
-    @objc private func windowDidResignKey(_ notification: Notification) {
-        guard !pinned, !ignoresFocusLoss else { return }
-        hide()
-    }
-
-    @objc private func appDidResignActive(_ notification: Notification) {
-        guard !pinned, !ignoresFocusLoss else { return }
-        hide()
     }
 }

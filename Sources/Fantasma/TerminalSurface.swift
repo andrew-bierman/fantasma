@@ -2,16 +2,14 @@ import AppKit
 import GhosttyTerminal
 import GhosttyTheme
 
-/// One login shell rendered by one long-lived libghostty surface (KTD1).
-/// The view is the window's content; hiding the overlay never touches the
-/// surface, so shell state survives hide/show cycles (KTD5).
 @MainActor
 final class TerminalSurface: NSObject {
     let terminalView: TerminalView
     private let controller: TerminalController
     private(set) var shellHasExited = false
-    /// Fired once when the shell exits; the app quits (KTD9).
     var onShellExit: (() -> Void)?
+
+    private static let termName = "xterm-256color"
 
     init(frame: NSRect) {
         let theme = GhosttyThemeCatalog.theme(named: "Dracula")?.toTerminalTheme() ?? .default
@@ -26,9 +24,7 @@ final class TerminalSurface: NSObject {
                 builder.withCustom("scrollbar", "never")
                 builder.withCustom("macos-option-as-alt", "true")
                 builder.withCustom("scrollback-limit", "10000000")
-                builder.withCustom("term", "xterm-256color")
-                // Deny programmatic clipboard reads until a real UI exists
-                // to confirm them; user-initiated pastes stay allowed.
+                builder.withCustom("term", TerminalSurface.termName)
                 builder.withCustom("clipboard-read", "deny")
                 builder.withCustom("clipboard-write", "allow")
                 builder.withCustom("clipboard-paste-protection", "false")
@@ -47,8 +43,6 @@ final class TerminalSurface: NSObject {
         terminalView.controller = controller
     }
 
-    /// Makes the Ghostty surface the window's first responder so typing
-    /// works (KTD4); the view's own focus path handles the mount race.
     func focus() {
         _ = terminalView.acquireProgrammaticFocus()
     }
@@ -57,8 +51,12 @@ final class TerminalSurface: NSObject {
         terminalView.fitToSize()
     }
 
-    /// Wraps the user's login shell with `-l` — R9 requires a login shell,
-    /// and the exec default does not guarantee one (justty precedent).
+    /// Tears the surface down explicitly (removes the controller, ending the
+    /// PTY session) so a quit does not leave the child shell attached.
+    func teardown() {
+        terminalView.controller = nil
+    }
+
     private static func loginShellCommand() -> String {
         let shell = loginShellPath()
         let quoted = "'" + shell.replacingOccurrences(of: "'", with: "'\\''") + "'"
@@ -75,7 +73,7 @@ final class TerminalSurface: NSObject {
 
     private static func surfaceEnvironment() -> [String: String] {
         var environment = [
-            "TERM": "xterm-256color",
+            "TERM": termName,
             "COLORTERM": "truecolor",
             "TERM_PROGRAM": "Fantasma",
         ]
