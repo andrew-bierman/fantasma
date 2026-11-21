@@ -17,7 +17,7 @@ for index in arguments.indices {
     let keys = ["--width", "--height", "--x", "--y"]
     if keys.contains(flag), index + 1 < arguments.count,
        let value = Int(arguments[index + 1]) {
-        pendingFrame[String(flag.dropFirst())] = value
+        pendingFrame[String(flag.dropFirst(2))] = value
         pendingFrameFile = "/tmp/fantasma-pending-frame"
     }
 }
