@@ -4,6 +4,10 @@ import GhosttyTheme
 
 @MainActor
 final class TerminalSurface: NSObject {
+    /// Theme construction hits the 485-entry catalog; memoize per name so
+    /// repeated summons with clear-on-open don't re-scan it.
+    private static var themeCache: [String: TerminalTheme] = [:]
+
     let terminalView: TerminalView
     private let controller: TerminalController
     private(set) var shellHasExited = false
@@ -18,7 +22,14 @@ final class TerminalSurface: NSObject {
     private static let termName = "xterm-256color"
 
     init(frame: NSRect, config: FantasmaConfig) {
-        let theme = GhosttyThemeCatalog.theme(named: config.theme)?.toTerminalTheme() ?? .default
+        let theme: TerminalTheme
+        if let cached = TerminalSurface.themeCache[config.theme] {
+            theme = cached
+        } else {
+            let built = GhosttyThemeCatalog.theme(named: config.theme)?.toTerminalTheme() ?? .default
+            TerminalSurface.themeCache[config.theme] = built
+            theme = built
+        }
         controller = TerminalController(
             configSource: .none,
             theme: theme,
@@ -26,6 +37,9 @@ final class TerminalSurface: NSObject {
                 builder.withCursorStyle(.block)
                 builder.withWindowPaddingX(config.padding)
                 builder.withWindowPaddingY(config.padding)
+                if let family = config.fontFamily {
+                    builder.withFontFamily(family)
+                }
                 builder.withCustom("window-padding-balance", "true")
                 builder.withCustom("scrollbar", "never")
                 builder.withCustom("macos-option-as-alt", "true")
@@ -34,6 +48,7 @@ final class TerminalSurface: NSObject {
                 builder.withCustom("clipboard-read", "deny")
                 builder.withCustom("clipboard-write", "allow")
                 builder.withCustom("clipboard-paste-protection", "false")
+                builder.withCustom("copy-on-select", config.copyOnSelect ? "true" : "false")
             }
         )
         terminalView = TerminalView(frame: frame)
@@ -58,9 +73,6 @@ final class TerminalSurface: NSObject {
         terminalView.fitToSize()
     }
 
-    /// Tears the surface down explicitly: marks the teardown expected so the
-    /// shell's death is not mistaken for a spontaneous exit, then releases
-    /// the controller (ending the PTY and its shell).
     func teardown() {
         guard !isTearingDown else { return }
         isTearingDown = true
@@ -102,8 +114,6 @@ final class TerminalSurface: NSObject {
 
 extension TerminalSurface: TerminalSurfaceCloseDelegate {
     func terminalDidClose(processAlive: Bool) {
-        // Expected teardowns (clear-on-open dismissal, window close) are not
-        // shell deaths; only a spontaneous exit reaches onShellExit.
         guard !isTearingDown, !shellHasExited else { return }
         shellHasExited = true
         onShellExit?()

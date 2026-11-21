@@ -5,22 +5,30 @@ import AppKit
 /// button, Cmd+W, or the shell exiting — ends that window's shell only.
 @MainActor
 final class NormalWindowController: NSObject, NSWindowDelegate {
+    static let defaultSize = NSSize(width: 900, height: 600)
+
     let window: NSWindow
     private let surface: TerminalSurface
     private var closed = false
     var onClosed: ((NormalWindowController) -> Void)?
 
     init(config: FantasmaConfig) {
-        let size = NSSize(width: 900, height: 600)
         window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: size),
+            contentRect: NSRect(origin: .zero, size: NormalWindowController.defaultSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "fantasma"
         window.isReleasedWhenClosed = false
-        surface = TerminalSurface(frame: NSRect(origin: .zero, size: size), config: config)
+        if !config.normalTitleBar {
+            // Full-size content with a transparent, hidden title bar keeps
+            // the traffic lights while the bar strip disappears (KTD17).
+            window.styleMask.insert(.fullSizeContentView)
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+        }
+        surface = TerminalSurface(frame: NSRect(origin: .zero, size: NormalWindowController.defaultSize), config: config)
         super.init()
 
         surface.onShellExit = { [weak self] in
@@ -44,7 +52,8 @@ final class NormalWindowController: NSObject, NSWindowDelegate {
         closed = true
         surface.teardown()
         window.orderOut(nil)
-        onClosed?(self)
+        let finished = self
+        onClosed?(finished)
     }
 
     func windowWillClose(_ notification: Notification) {
