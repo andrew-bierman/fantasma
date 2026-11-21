@@ -22,6 +22,14 @@ final class TerminalSurface: NSObject {
     /// reach it.
     var onShellExit: (() -> Void)?
 
+    /// The `link_url` gate, captured at surface creation like the other
+    /// engine-side settings: false keeps links rendered (that lives in the
+    /// engine) but the open path below drops every request.
+    private let allowsLinkOpen: Bool
+    /// Whether a pointing-hand cursor is currently pushed on the AppKit
+    /// cursor stack; every push is paired with exactly one pop.
+    private var hoverCursorPushed = false
+
     private static let termName = "xterm-256color"
 
     init(frame: NSRect, config: FantasmaConfig) {
@@ -49,6 +57,7 @@ final class TerminalSurface: NSObject {
         )
         terminalView = TerminalView(frame: frame)
         fontZoom = FontZoom(defaultFontSize: config.fontSize)
+        allowsLinkOpen = config.linkUrl
         super.init()
 
         terminalView.delegate = self
@@ -104,6 +113,10 @@ final class TerminalSurface: NSObject {
         guard !isTearingDown else { return }
         isTearingDown = true
         shellHasExited = true
+        if hoverCursorPushed {
+            NSCursor.pop()
+            hoverCursorPushed = false
+        }
         terminalView.controller = nil
     }
 
@@ -188,17 +201,58 @@ extension TerminalSurface: TerminalSurfaceBellDelegate {
 
 extension TerminalSurface: TerminalSurfaceOpenURLDelegate {
     /// Schemes Fantasma will hand to the system opener. A terminal must
-    /// never become a launcher for arbitrary URL schemes (file:, custom
-    /// app schemes, …), so anything outside this allowlist is dropped
-    /// silently.
-    private static let openURLSchemes: Set<String> = ["http", "https", "mailto"]
+    /// never become a launcher for arbitrary URL schemes, so anything
+    /// outside this allowlist is dropped silently. `file:` is deliberately
+    /// absent: NSWorkspace.open on a file URL executes whatever LaunchServices
+    /// handler claims that file type, which is exactly the launcher-shaped
+    /// hole this gate exists to keep shut.
+    private nonisolated static let openURLSchemes: Set<String> = ["http", "https", "mailto"]
 
-    func terminalDidRequestOpenURL(_ url: String, kind: TerminalOpenURLKind) {
-        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Parses and validates a link the engine surfaced for opening. Pure
+    /// (no NSWorkspace, no state) so the allowlist is unit-testable. Network
+    /// schemes must carry a host and `mailto:` an address — the engine's
+    /// text scanner can surface degenerate URLs like bare `https://`, and
+    /// opening one is pointless at best.
+    nonisolated static func openableURL(from raw: String) -> URL? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let parsed = URL(string: trimmed),
               let scheme = parsed.scheme?.lowercased(),
               Self.openURLSchemes.contains(scheme)
-        else { return }
+        else { return nil }
+        switch scheme {
+        case "http", "https":
+            guard let host = parsed.host, !host.isEmpty else { return nil }
+        case "mailto":
+            guard !parsed.path.isEmpty else { return nil }
+        default:
+            return nil
+        }
+        return parsed
+    }
+
+    func terminalDidRequestOpenURL(_ url: String, kind: TerminalOpenURLKind) {
+        // `kind` selects upstream styling (plain text vs OSC 8 vs HTML; the
+        // wrapper maps every non-text/html kind to .unknown). Safety lives
+        // in the scheme allowlist, so every kind flows through it alike.
+        guard allowsLinkOpen, let parsed = Self.openableURL(from: url) else { return }
         NSWorkspace.shared.open(parsed)
+    }
+}
+
+extension TerminalSurface: TerminalSurfaceHoverLinkDelegate {
+    func terminalDidUpdateHoverLink(_ url: String?) {
+        // The engine never touches NSCursor, so this pushed pointing hand
+        // is the only cursor state Fantasma owns on the stack; hover end
+        // (nil) and teardown each pop exactly once. With link_url off the
+        // gate drops opens, so the affordance must not advertise them.
+        if url != nil, allowsLinkOpen {
+            if !hoverCursorPushed {
+                NSCursor.pointingHand.push()
+                hoverCursorPushed = true
+            }
+        } else if hoverCursorPushed {
+            NSCursor.pop()
+            hoverCursorPushed = false
+        }
     }
 }
