@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -13,6 +14,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var normalWindows: [NormalWindowController] = []
     private let pinned = CommandLine.arguments.contains("--pin")
     private var config = FantasmaConfigLoader.load()
+    private var hotkeyRef: EventHotKeyRef?
+    private var hotkeyHandler: EventHandlerRef?
 
     private let cornerRadius: CGFloat = 14
 
@@ -142,6 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.window = window
         show()
         installMainMenu()
+        registerGlobalHotkey()
     }
 
     /// The menu bar only exists while Fantasma runs with the regular
@@ -200,6 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        unregisterGlobalHotkey()
         NSEvent.removeMonitor(keyMonitor as Any)
         keyMonitor = nil
         surface?.teardown()
@@ -478,5 +483,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // invisible contentView content between summons.
             window.contentView = nil
         }
+    }
+
+    // MARK: - Global hotkey
+
+    /// Carbon RegisterEventHotKey rather than an NSEvent global monitor:
+    /// an accessory app with no key windows still receives Carbon hotkey
+    /// events, and the keystroke is consumed. Empty config leaves the
+    /// feature off; invalid input warns and stays off. Fires the same
+    /// toggle path as the distributed toggle-float handler.
+    private func registerGlobalHotkey() {
+        switch HotkeyParser.parse(config.hotkey) {
+        case .disabled:
+            return
+        case .invalid(let raw):
+            fantasmaLog("hotkey config \"\(raw)\" is invalid — disabled (expected e.g. cmd+grave)")
+            return
+        case .hotkey(let binding):
+            var eventTypes = [EventTypeSpec(
+                eventClass: OSType(kEventClassKeyboard),
+                eventKind: UInt32(kEventHotKeyPressed)
+            )]
+            // The C callback cannot capture; the AppDelegate lives for the
+            // whole process (main() retains it), so an unretained pointer
+            // is safe. Carbon dispatches hotkey events on the main thread.
+            let userData = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+            let installStatus = InstallEventHandler(
+                GetApplicationEventTarget(),
+                { _, _, userData in
+                    guard let userData else { return noErr }
+                    let delegate = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
+                    MainActor.assumeIsolated {
+                        delegate.hotkeyFired()
+                    }
+                    return noErr
+                },
+                eventTypes.count,
+                &eventTypes,
+                userData,
+                &hotkeyHandler
+            )
+            guard installStatus == noErr else {
+                fantasmaLog("hotkey handler install failed: \(installStatus)")
+                return
+            }
+            var ref: EventHotKeyRef?
+            let registerStatus = RegisterEventHotKey(
+                binding.keyCode,
+                binding.modifiers,
+                EventHotKeyID(signature: OSType(0x4648_4B59), id: 1), // 'FHKY'
+                GetApplicationEventTarget(),
+                0,
+                &ref
+            )
+            guard registerStatus == noErr else {
+                fantasmaLog("hotkey register failed: \(registerStatus)")
+                return
+            }
+            hotkeyRef = ref
+            fantasmaLog("hotkey registered")
+        }
+    }
+
+    private func unregisterGlobalHotkey() {
+        if let ref = hotkeyRef {
+            UnregisterEventHotKey(ref)
+            hotkeyRef = nil
+        }
+        if let handler = hotkeyHandler {
+            RemoveEventHandler(handler)
+            hotkeyHandler = nil
+        }
+    }
+
+    private func hotkeyFired() {
+        toggle()
     }
 }

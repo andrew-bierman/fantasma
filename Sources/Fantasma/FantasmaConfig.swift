@@ -16,6 +16,9 @@ struct FantasmaConfig: Equatable {
     var floatX: Int? = nil
     var floatY: Int? = nil
     var normalTitleBar = true
+    /// Raw `hotkey` binding string, e.g. "cmd+grave". Empty (the default)
+    /// disables the global hotkey; the raw value is parsed at registration.
+    var hotkey = ""
 }
 
 enum FantasmaConfigLoader {
@@ -150,6 +153,9 @@ enum FantasmaConfigLoader {
         if let y = values["float_y"].flatMap(Int.init) { config.floatY = y }
         if let titleBar = bool(values["normal_title_bar"]) {
             config.normalTitleBar = titleBar
+        }
+        if let hotkey = values["hotkey"] {
+            config.hotkey = hotkey
         }
         return config
     }
