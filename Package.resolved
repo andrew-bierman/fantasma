@@ -1,0 +1,24 @@
+{
+  "originHash" : "71103b62f0ed175fbb3c42c3a36a35164178ef4694ad582dcb0651a78b6a07ab",
+  "pins" : [
+    {
+      "identity" : "displaylink",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Lakr233/DisplayLink.git",
+      "state" : {
+        "revision" : "41bea2661e04bebcb1c4f15fc0b6197850100fdd",
+        "version" : "3.0.1"
+      }
+    },
+    {
+      "identity" : "libghostty-spm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Lakr233/libghostty-spm.git",
+      "state" : {
+        "revision" : "54f38c0bcde7900bbf69144e084ab0418f640bbc",
+        "version" : "1.6.20261003"
+      }
+    }
+  ],
+  "version" : 3
+}
