@@ -6,7 +6,7 @@ import AppKit
 /// The minimum size floor governs interactive resizing (contentMinSize),
 /// not placement.
 enum OverlayGeometry {
-    static let defaultSize = NSSize(width: 960, height: 620)
+    static let defaultSize = NSSize(width: 560, height: 360)
     static let minimumSize = NSSize(width: 320, height: 180)
     static let topInset: CGFloat = 110
 
