@@ -5,6 +5,8 @@ cd "$ROOT"
 
 APP_NAME="Fantasma"
 APP="$ROOT/$APP_NAME.app"
+VERSION="$(cat "$ROOT/VERSION" 2>/dev/null | tr -d '[:space:]')"
+VERSION="${VERSION:-0.0.0}"
 
 swift build -c release
 
@@ -24,7 +26,7 @@ if [ -f "$ROOT/Assets/AppIcon.icns" ]; then
     cp "$ROOT/Assets/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 fi
 
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -44,13 +46,17 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>${VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>${VERSION}</string>
     <key>LSUIElement</key>
     <true/>
 </dict>
 </plist>
 PLIST
+
+# Ad-hoc signature so the app launches locally; a real Developer ID signature
+# (needed for notarization) is applied by scripts/notarize.sh.
+codesign --force --deep --sign - "$APP" 2>/dev/null || true
 
 echo "Built $APP"
