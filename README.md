@@ -31,8 +31,9 @@ brew tap andrew-bierman/tap
 brew install --cask andrew-bierman/tap/fantasma
 ```
 
-The build is unnotarized — on first launch, right-click Fantasma.app → Open,
-or run `xattr -dr com.apple.quarantine ~/Applications/Fantasma.app`.
+Official releases are notarized by the maintainer. If you build from source,
+the app is ad-hoc signed and unnotarized — on first launch, right-click
+Fantasma.app → Open, or run `xattr -dr com.apple.quarantine ~/Applications/Fantasma.app`.
 
 From source:
 
@@ -112,6 +113,7 @@ swift build -c release    # build
 swift test                # unit tests
 scripts/smoke.sh          # end-to-end AX loop (needs Accessibility permission)
 scripts/release.sh        # cut a release from main (bump VERSION first)
+scripts/notarize.sh       # optional: Developer ID sign + notarize + staple
 ```
 
 Every PR that changes code must bump `VERSION` — a GitHub Action enforces it.
