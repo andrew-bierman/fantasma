@@ -24,13 +24,9 @@ IDENTITY="${IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null \
 }
 echo "Signing with: $IDENTITY"
 
-# Deep-sign nested code first (the GhosttyKit resource bundle), then the app,
-# with the hardened runtime notarytool requires.
-find "$APP/Contents/Resources" -name "*.bundle" -type d 2>/dev/null | while read -r bundle; do
-  codesign --force --sign "$IDENTITY" --timestamp "$bundle"
-done
-codesign --force --deep --options runtime --sign "$IDENTITY" --timestamp "$APP"
-codesign --verify --strict --verbose=2 "$APP"
+# The GhosttyKit bundle contains only resources sealed by the app signature.
+codesign --force --options runtime --sign "$IDENTITY" --timestamp "$APP"
+codesign --verify --deep --strict --verbose=2 "$APP"
 
 ZIP="$ROOT/Fantasma-notarize.zip"
 ditto -c -k --keepParent "$APP" "$ZIP"
