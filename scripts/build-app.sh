@@ -18,7 +18,9 @@ chmod +x "$APP/Contents/MacOS/$APP_NAME"
 # SPM resource bundles (Ghostty's shell integration + terminfo) must ship
 # inside the app or ghostty_init crashes at launch.
 find "$ROOT/.build" -maxdepth 4 -name "*.bundle" -type d 2>/dev/null | while read -r bundle; do
-    cp -R "$bundle" "$APP/Contents/Resources/"
+    # -f: SPM marks cached bundle files read-only (444); a pre-existing
+    # destination (cached CI workspace) would fail a plain overwrite.
+    cp -Rf "$bundle" "$APP/Contents/Resources/"
 done
 
 # Compile the layered icon and its fallback for older macOS versions.
