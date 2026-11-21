@@ -8,7 +8,9 @@ final class NormalWindowController: NSObject, NSWindowDelegate {
     static let defaultSize = NSSize(width: 900, height: 600)
 
     let window: NSWindow
-    private let surface: TerminalSurface
+    /// Internal so the app layer can wire working-directory tracking and
+    /// read the surface's identity without another pass-through property.
+    let surface: TerminalSurface
     private let shellName: String
     /// Login shell pid once observed at the pty's foreground (BusyTitle).
     private var shellPid: pid_t?
@@ -18,7 +20,10 @@ final class NormalWindowController: NSObject, NSWindowDelegate {
     private var closed = false
     var onClosed: ((NormalWindowController) -> Void)?
 
-    init(config: FantasmaConfig) {
+    /// `workingDirectory` seeds the surface's shell with a starting
+    /// directory (nil spawns at home) — new windows open where the most
+    /// recently active surface last was.
+    init(config: FantasmaConfig, workingDirectory: String? = nil) {
         window = NSWindow(
             contentRect: NSRect(origin: .zero, size: NormalWindowController.defaultSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -34,7 +39,11 @@ final class NormalWindowController: NSObject, NSWindowDelegate {
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
         }
-        surface = TerminalSurface(frame: NSRect(origin: .zero, size: NormalWindowController.defaultSize), config: config)
+        surface = TerminalSurface(
+            frame: NSRect(origin: .zero, size: NormalWindowController.defaultSize),
+            config: config,
+            workingDirectory: workingDirectory
+        )
         shellName = (TerminalSurface.loginShellPath() as NSString).lastPathComponent
         super.init()
 

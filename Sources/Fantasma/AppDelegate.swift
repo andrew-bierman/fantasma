@@ -16,6 +16,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var config = FantasmaConfigLoader.load()
     private var hotkeyRef: EventHotKeyRef?
     private var hotkeyHandler: EventHandlerRef?
+    /// OSC 7 reports from every live surface; new float shells and new
+    /// normal windows spawn in the most recently active surface's cwd.
+    private var cwdTracker = LastWorkingDirectory()
 
     private let cornerRadius: CGFloat = 14
 
@@ -24,9 +27,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // immediately (KTD3).
         NSApp.setActivationPolicy(.accessory)
 
+        let visibleFrame = NSScreen.main?.visibleFrame ?? .zero
         let frame = OverlayGeometry.frame(
-            for: NSScreen.main?.visibleFrame ?? .zero,
-            config: config
+            for: visibleFrame,
+            // Precedence (see FloatFrameState): config wins over the
+            // persisted frame, the persisted frame wins over defaults.
+            config: FloatFrameState.merged(
+                into: config,
+                state: FloatFrameState.load(path: FloatFrameState.defaultPath()),
+                visibleFrame: visibleFrame
+            )
         )
         let window = OverlayWindow(
             contentRect: frame,
@@ -51,6 +61,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self,
             selector: #selector(windowDidResize(_:)),
             name: NSWindow.didResizeNotification,
+            object: window
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidEndLiveResize(_:)),
+            name: NSWindow.didEndLiveResizeNotification,
             object: window
         )
         NotificationCenter.default.addObserver(
@@ -214,8 +230,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         unregisterGlobalHotkey()
+        // Last frame of the session; earlier writes already captured
+        // hides and resize-ends, this covers quit-without-hide.
+        persistFloatFrame()
         NSEvent.removeMonitor(keyMonitor as Any)
         keyMonitor = nil
+        if let surface {
+            cwdTracker.remove(ObjectIdentifier(surface))
+        }
         surface?.teardown()
         surface = nil
         // Snapshot + clear before closing: close() mutates normalWindows
@@ -230,6 +252,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func windowDidResize(_ notification: Notification) {
         surface?.fitToSize()
+    }
+
+    @objc private func windowDidEndLiveResize(_ notification: Notification) {
+        // A drag-resize is a deliberate size choice; remember it even if
+        // the app never hides before quitting.
+        persistFloatFrame()
     }
 
     @objc private func focusLost(_ notification: Notification) {
@@ -301,6 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             || config.fontFamily != previous.fontFamily
             || config.copyOnSelect != previous.copyOnSelect
         guard surfaceChanged, let surface else { return }
+        cwdTracker.remove(ObjectIdentifier(surface))
         surface.teardown()
         self.surface = nil
         attachSurface(to: window, frame: NSRect(origin: .zero, size: window.frame.size))
@@ -311,9 +340,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func openNormalWindow() {        let controller = NormalWindowController(config: config)
+    private func openNormalWindow() {
+        let controller = NormalWindowController(
+            config: config,
+            workingDirectory: cwdTracker.spawnDirectory()
+        )
+        trackWorkingDirectory(of: controller.surface)
         controller.onClosed = { [weak self] finished in
             self?.normalWindows.removeAll { $0 === finished }
+            // Drop the closed window's surface from the tracker so its
+            // last directory cannot seed a later spawn.
+            self?.cwdTracker.remove(ObjectIdentifier(finished.surface))
             // Last normal window closed: drop the menu bar by returning to
             // accessory (the float re-upgrades to accessory on its own show).
             if self?.normalWindows.isEmpty == true {
@@ -330,6 +367,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // downgrades while active — losing the menu bar mid-activation
         // would resign and self-hide.
         guard let focused = notification.object as? NSWindow else { return }
+        // Key status also marks the cwd-tracking "last active" surface:
+        // whichever window the user is typing in is where new shells open.
+        if focused === window, let surface {
+            cwdTracker.activate(ObjectIdentifier(surface))
+        } else if let normal = normalWindows.first(where: { $0.window === focused }) {
+            cwdTracker.activate(ObjectIdentifier(normal.surface))
+        }
         if normalWindows.contains(where: { $0.window === focused }) {
             NSApp.setActivationPolicy(.regular)
         }
@@ -361,7 +405,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Surface lifecycle
 
     private func attachSurface(to window: NSWindow, frame: NSRect) {
-        let surface = TerminalSurface(frame: frame, config: config)
+        let surface = TerminalSurface(
+            frame: frame,
+            config: config,
+            // Summon continuity: spawn where the most recently active
+            // surface last was (its last OSC 7 report), else home.
+            workingDirectory: cwdTracker.spawnDirectory()
+        )
+        trackWorkingDirectory(of: surface)
         surface.onShellExit = { [weak self] in
             self?.quitFromShellExit()
         }
@@ -389,6 +440,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ])
 
         self.surface = surface
+    }
+
+    /// Feeds this surface's OSC 7 reports into the shared tracker, keyed
+    /// by identity; activation and spawn paths read the same identity.
+    private func trackWorkingDirectory(of surface: TerminalSurface) {
+        let id = ObjectIdentifier(surface)
+        surface.onWorkingDirectoryChange = { [weak self] path in
+            self?.cwdTracker.record(id, directory: path)
+        }
+    }
+
+    /// Best-effort snapshot of the float's current frame into the state
+    /// file. Called on hide, live-resize end, and quit; a failed write is
+    /// logged, never fatal.
+    private func persistFloatFrame() {
+        guard let window else { return }
+        let visibleFrame = window.screen?.visibleFrame
+            ?? NSScreen.main?.visibleFrame
+            ?? window.frame
+        let state = FloatFrameState.from(frame: window.frame, visibleFrame: visibleFrame)
+        do {
+            try state.store(path: FloatFrameState.defaultPath())
+        } catch {
+            fantasmaLog("float frame persist failed: \(error)")
+        }
     }
 
     // MARK: - Show / hide / toggle
@@ -494,11 +570,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         cancelSummonTimers()
         gate.hid()
         guard let window, window.isVisible else { return }
+        // Last frame before the float leaves the screen: hide is the only
+        // persist point that sees a plain drag-move (no live resize).
+        persistFloatFrame()
         fantasmaLog("hide")
         window.orderOut(nil)
         // clear_on_open (R17): the shell dies here by design; the surface's
         // expected-teardown state keeps this off the quit path (KTD14).
         if config.clearOnOpen {
+            if let surface {
+                cwdTracker.remove(ObjectIdentifier(surface))
+            }
             surface?.teardown()
             surface = nil
             // Release the dead Metal view tree instead of retaining it as
