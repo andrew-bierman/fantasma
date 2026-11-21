@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# fantasmasay — a friendly ghost says your words (requires cowsay)
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec cowsay -f "$DIR/ghost.cow" "$@"
