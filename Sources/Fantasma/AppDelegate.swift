@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var gate = SummonGate()
     private var activationRetry: DispatchWorkItem?
     private var armHold: DispatchWorkItem?
+    private var lsReopenFired = false
+    private var finalActivationRetryUsed = false
     private var keyMonitor: Any?
     private var reopenTimestamp: Date?
     private var isQuitting = false
@@ -529,17 +531,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let window else { return }
         gate.showRequested()
         cancelSummonTimers()
-        if surface == nil {
-            attachSurface(
-                to: window,
-                frame: NSRect(origin: .zero, size: window.frame.size)
-            )
-        }
+        finalActivationRetryUsed = false
+        lsReopenFired = false
+        // Present the window in this pass. Building the surface (SPM config
+        // parse ×2 + PTY + login shell fork) blocks the main thread for
+        // ~100–200 ms; making the window key first puts the rounded float
+        // on screen within a frame and the shell streams in right after.
         window.makeKeyAndOrderFront(nil)
         applyOneShotFrame()
-        focusContent()
-        fantasmaLog("show")
-        activateAttempt()
+        fantasmaLog("show: window presented")
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window, window.isVisible else { return }
+            if self.surface == nil {
+                self.attachSurface(
+                    to: window,
+                    frame: NSRect(origin: .zero, size: window.frame.size)
+                )
+            }
+            self.focusContent()
+            fantasmaLog("show: surface attached")
+            self.activateAttempt()
+        }
     }
 
     /// One-shot frame override from the CLI (`+toggle-float --width …`).
@@ -579,13 +591,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fantasmaLog("activation focused — arm hold starts")
             scheduleArmHold()
         case .retry:
-            fantasmaLog("activation retry in 0.25s (\(gate.attemptsLeft) left)")
+            fantasmaLog("activation retry in \(Self.retryDelay(for: gate.attemptsLeft))s (\(gate.attemptsLeft) left)")
             // NSApp.activate is refused outright on modern macOS unless the
             // system deems us activation-eligible; LaunchServices-mediated
             // activation (reopen on our own bundle) carries real system
             // rights and is the path that reliably works. Fire it after the
-            // first two plain attempts have failed.
-            if gate.attemptsLeft <= 4 {
+            // first plain attempt fails, once per summon.
+            if gate.attemptsLeft <= 4, !lsReopenFired {
+                lsReopenFired = true
                 let bundlePath = Bundle.main.bundlePath
                 if !bundlePath.isEmpty {
                     fantasmaLog("requesting LS reopen activation")
@@ -594,10 +607,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             let work = DispatchWorkItem { [weak self] in self?.activateAttempt() }
             activationRetry = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + Self.retryDelay(for: gate.attemptsLeft),
+                execute: work
+            )
         case .gaveUp:
             fantasmaLog("activation gave up: active=\(NSApp.isActive) key=\(window.isKeyWindow)")
+            oneFinalActivationRetry()
         }
+    }
+
+    /// Give-up must never end as "visible but dead": one bounded re-arm —
+    /// WM focus bounce usually settles within a beat. Used once per summon.
+    private func oneFinalActivationRetry() {
+        guard !finalActivationRetryUsed else { return }
+        finalActivationRetryUsed = true
+        gate.grantRetry()
+        let work = DispatchWorkItem { [weak self] in self?.activateAttempt() }
+        activationRetry = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+    }
+
+    /// First retry lands quickly (a refused activate settles within a
+    /// runloop turn); later retries back off for WM bounce.
+    static func retryDelay(for attemptsLeft: Int) -> TimeInterval {
+        attemptsLeft >= SummonGate().maxAttempts - 1 ? 0.07 : 0.25
     }
 
     private func scheduleArmHold() {

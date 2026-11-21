@@ -31,8 +31,9 @@ if let file = pendingFrameFile {
     try? text.write(toFile: file, atomically: true, encoding: .utf8)
 }
 if FantasmaCLI.handle(Array(arguments.dropFirst())) {
-    // Let distributed posts flush before the process goes away.
-    usleep(250_000)
+    // deliverImmediately queues the post at notifyd before this returns;
+    // a short settle still beats the old 250 ms on every scripted call.
+    usleep(20_000)
     exit(0)
 } else {
     MainActor.assumeIsolated {
