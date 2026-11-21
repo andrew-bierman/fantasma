@@ -5,8 +5,8 @@ final class OverlayGeometryTests: XCTestCase {
     func testDefaultFrameCentersHorizontallyWithTopInset() {
         let visible = NSRect(x: 0, y: 0, width: 1728, height: 1117)
         let frame = OverlayGeometry.frame(for: visible)
-        XCTAssertEqual(frame.width, 720)
-        XCTAssertEqual(frame.height, 480)
+        XCTAssertEqual(frame.width, 560)
+        XCTAssertEqual(frame.height, 360)
         XCTAssertEqual(frame.midX, visible.midX, accuracy: 0.5)
         XCTAssertEqual(frame.maxY, visible.maxY - 110, accuracy: 0.5)
     }
