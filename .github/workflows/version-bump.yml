@@ -1,0 +1,37 @@
+name: version-bump
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  enforce-bump:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require VERSION bump when code changed
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          BASE_V="$(git show "$BASE:VERSION" 2>/dev/null || echo '')"
+          HEAD_V="$(git show "$HEAD:VERSION" 2>/dev/null || echo '')"
+
+          if [ "$BASE_V" != "$HEAD_V" ]; then
+            echo "VERSION bumped: $BASE_V -> $HEAD_V"
+            exit 0
+          fi
+
+          # Docs-only changes are exempt; any code change must bump.
+          if git diff --name-only "$BASE" "$HEAD" -- Sources/ scripts/ Tests/ Package.swift | grep -q .; then
+            echo "::error::Sources changed but VERSION did not bump. Bump VERSION (at least patch) in this PR."
+            exit 1
+          fi
+
+          echo "Docs-only change; VERSION bump not required."
