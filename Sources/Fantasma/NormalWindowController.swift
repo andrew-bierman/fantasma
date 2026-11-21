@@ -48,6 +48,11 @@ final class NormalWindowController: NSObject, NSWindowDelegate {
         surface.focus()
     }
 
+    /// Routes a font-zoom keypress (⌘=/⌘+/⌘−/⌘0) to this window's surface.
+    func applyFontZoom(_ direction: FontZoom.Direction) {
+        surface.applyFontZoom(direction)
+    }
+
     /// Explicit close: tears the surface down (expected teardown — this
     /// window's shell ends but the app stays up) and notifies the owner.
     func close() {
