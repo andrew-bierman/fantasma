@@ -100,7 +100,8 @@ values win.
 | `clear_on_open` | `true` | `true`: dismissing the float ends its shell; `false`: the shell survives hide/show |
 | `copy_on_select` | `true` | Copy selections to the clipboard as you make them |
 | `link_url` | `true` | Open clicked links (allowlisted schemes only) |
-| `hotkey` | *(off)* | Global summon hotkey, e.g. `cmd+grave` (`cmd`/`ctrl`/`alt`/`shift` + a key). Applied at launch |
+| `hotkey` | *(off)* | Global summon hotkey, e.g. `cmd+grave` (`cmd`/`ctrl`/`alt`/`shift` + a key). Re-registers live on `+reload-config` |
+| `remember_frame` | `true` | When `false`, the float ignores `state.toml` and always places from config/defaults |
 | `float_width` / `float_height` | `560` / `360` | Default float size in points (clamped to the screen) |
 | `float_x` / `float_y` | *(centered, 110pt from top)* | Default float position in points from the screen's top-left |
 | `normal_title_bar` | `true` | `false` hides tiled windows' title bar |
