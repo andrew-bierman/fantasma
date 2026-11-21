@@ -9,9 +9,15 @@ APP="$ROOT/$APP_NAME.app"
 swift build -c release
 
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$ROOT/.build/release/Fantasma" "$APP/Contents/MacOS/$APP_NAME"
 chmod +x "$APP/Contents/MacOS/$APP_NAME"
+
+# SPM resource bundles (Ghostty's shell integration + terminfo) must ship
+# inside the app or ghostty_init crashes at launch.
+find "$ROOT/.build" -maxdepth 4 -name "*.bundle" -type d 2>/dev/null | while read -r bundle; do
+    cp -R "$bundle" "$APP/Contents/Resources/"
+done
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
