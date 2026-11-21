@@ -15,6 +15,13 @@ GH_CMD="gh"; command -v ghx >/dev/null 2>&1 && GH_CMD="ghx"
 swift test -q
 "$ROOT/scripts/build-app.sh"
 
+# Opt-in notarization: FANTASMA_NOTARIZE=1 scripts/release.sh
+# Requires the Developer ID cert + one-time `xcrun notarytool store-credentials
+# fantasma-notary ...` (see scripts/notarize.sh header).
+if [ "${FANTASMA_NOTARIZE:-0}" = "1" ]; then
+  "$ROOT/scripts/notarize.sh"
+fi
+
 rm -rf "/tmp/Fantasma-$VERSION"
 mkdir -p "/tmp/Fantasma-$VERSION"
 cp -R "$ROOT/Fantasma.app" "/tmp/Fantasma-$VERSION/"
