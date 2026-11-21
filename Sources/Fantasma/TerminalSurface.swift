@@ -10,6 +10,9 @@ final class TerminalSurface: NSObject {
 
     let terminalView: TerminalView
     private let controller: TerminalController
+    /// Font zoom state for this surface (⌘=/⌘+/⌘−/⌘0); 0 is the config
+    /// default the surface booted with.
+    let fontZoom: FontZoom
     private(set) var shellHasExited = false
     /// Set before programmatic release so the close delegate does not route
     /// an expected teardown (clear-on-open dismissal, window close) to the
@@ -52,6 +55,7 @@ final class TerminalSurface: NSObject {
             }
         )
         terminalView = TerminalView(frame: frame)
+        fontZoom = FontZoom(defaultFontSize: config.fontSize)
         super.init()
 
         terminalView.delegate = self
@@ -71,6 +75,11 @@ final class TerminalSurface: NSObject {
 
     func fitToSize() {
         terminalView.fitToSize()
+    }
+
+    /// Routes a font-zoom keypress (⌘=/⌘+/⌘−/⌘0) to this surface's view.
+    func applyFontZoom(_ direction: FontZoom.Direction) {
+        fontZoom.apply(direction, on: terminalView)
     }
 
     func teardown() {
