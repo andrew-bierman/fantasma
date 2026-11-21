@@ -32,8 +32,7 @@ curl -fsSL "$ASSET_URL" -o "$TMP/fantasma.zip" || fail "download failed"
 mkdir -p "$DEST"
 rm -rf "$DEST/Fantasma.app"
 unzip -q "$TMP/fantasma.zip" -d "$TMP"
-cp -R "$TMP/Fantasma-0.2.0/Fantasma.app" "$DEST/" 2>/dev/null ||
-  cp -R "$TMP"/*.app "$DEST/" ||
+cp -R "$TMP"/*.app "$DEST/" ||
   fail "could not find Fantasma.app in the archive"
 rm -rf "$DEST/Fantasma.app/Contents/Resources/GhosttyKit_GhosttyTerminal.bundle/_CodeSignature" 2>/dev/null || true
 xattr -dr com.apple.quarantine "$DEST/Fantasma.app" 2>/dev/null || true
