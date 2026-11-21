@@ -33,6 +33,7 @@ Shipped:
 - [x] Copy on select
 - [x] Cmd+drag move, edge/corner resize, title-bar toggle for normal windows
 - [x] App icon, yabai title-scoped exemption
+- [x] Homebrew tap (`brew install --cask andrew-bierman/tap/fantasma`)
 
 Planned:
 
@@ -43,19 +44,26 @@ Planned:
 - [ ] Bell → notification, URL opening + foot-style hints mode
 - [ ] Light/dark appearance pairs, config reload
 - [ ] In-app global hotkey (drop the Tinycast dependency)
-- [ ] Homebrew tap + cask
 
 Foot-parity gaps we intend to close: URL launching with OSC 8 hints,
 copy-on-select to the primary selection, and SIGHUP-style config reload.
 Foot's server/client spawn model is noted but likely never — libghostty
 surfaces already start fast.
 
-## Build and run
+## Install
+
+Build from source:
 
 ```bash
-swift build -c release
-scripts/build-app.sh      # assembles Fantasma.app (LSUIElement, no Dock icon)
-scripts/install.sh        # installs to ~/Applications and launches
+git clone https://github.com/andrew-bierman/fantasma && cd fantasma
+scripts/install.sh        # build + install to ~/Applications + launch
+```
+
+Or Homebrew (Apple silicon, unnotarized build — trust-the-cask flow):
+
+```bash
+brew tap andrew-bierman/tap
+brew install --cask andrew-bierman/tap/fantasma
 ```
 
 The first resolve downloads a ≈161 MB `GhosttyKit.xcframework`; later builds
