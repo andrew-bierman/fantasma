@@ -5,10 +5,10 @@
 </p>
 
 A macOS terminal with two modes: a **float** — a small, rounded, chrome-less
-overlay that summons with a hotkey, takes focus instantly, and dismisses on
-blur — and normal **tiled windows** your tiling manager treats like any other
-app. Built on [libghostty](https://github.com/Lakr233/libghostty-spm)
-(Ghostty's terminal engine, packaged for Apple platforms).
+overlay that summons focused and dismisses on blur — and normal **tiled
+windows** your tiling manager treats like any other app. Built on
+[libghostty](https://github.com/Lakr233/libghostty-spm) (Ghostty's terminal
+engine, packaged for Apple platforms).
 
 <p align="center">
   <img src="docs/screenshots/float.png" width="560" alt="The fantasma float">
@@ -31,9 +31,9 @@ brew tap andrew-bierman/tap
 brew install --cask andrew-bierman/tap/fantasma
 ```
 
-Official releases are notarized by the maintainer. If you build from source,
-the app is ad-hoc signed and unnotarized — on first launch, right-click
-Fantasma.app → Open, or run `xattr -dr com.apple.quarantine ~/Applications/Fantasma.app`.
+Published builds are currently unnotarized — on first launch, right-click
+Fantasma.app → Open, or run
+`xattr -dr com.apple.quarantine ~/Applications/Fantasma.app`.
 
 From source:
 
@@ -47,14 +47,27 @@ downloads a ≈161 MB `GhosttyKit.xcframework`; later builds are cached.
 
 ## Usage
 
-**Float** — `fantasma +toggle-float` (or `open -a Fantasma`) summons the
-overlay focused and typing-ready. Running the same command again hides it.
-Clicking away or Cmd+W hides it. With the default config, dismissing ends the
-shell and every summon is fresh; set `clear_on_open = false` to keep the
-shell across hide/show.
+**Float** — `fantasma +toggle-float` (or `open -a Fantasma`, or your
+configured `hotkey`) summons the overlay focused and typing-ready. Clicking
+away, ⌘W, or a second summon hides it. The float remembers its last position
+and size across summons and relaunches. With `clear_on_open = true`
+(default) every summon starts a fresh shell, and that shell starts in the
+working directory of your last Fantasma shell (OSC 7).
 
 **Tiled windows** — `fantasma +new-window` opens a normal titled window that
-your tiling manager manages like any other app. Cmd+W closes it.
+your tiling manager manages like any other app. ⌘W closes it. Both window
+kinds spawn in the last-used directory and switch theme live with system
+appearance.
+
+**Find** — ⌘F opens the find bar. Enter / Shift+Enter walk the matches,
+Esc closes and refocuses the shell. Powered by the engine's native
+scrollback search.
+
+**Fonts** — ⌘= / ⌘- / ⌘0 zoom in, out, and reset, per window.
+
+**Links** — click to open in your browser; only allowlisted schemes
+(http, https, mailto) pass, and hovering shows a pointing hand.
+`link_url = false` disables opening (links still render).
 
 **CLI** — the binary doubles as a Ghostty-style action CLI:
 
@@ -66,9 +79,8 @@ fantasma +list-themes       # list bundled theme names
 fantasma +reload-config     # re-read the config file
 ```
 
-**Keys**: Cmd+W dismisses (float) or closes (tiled) · Cmd+Q quits ·
-Cmd+drag moves the float · drag the 8px edges to resize · ⌘, opens the
-config.
+**Keys**: ⌘W dismiss/close · ⌘Q quit · ⌘F find · ⌘= / ⌘- / ⌘0 font zoom ·
+⌘, opens the config · ⌘-drag moves the float · drag the 8px edges to resize.
 
 ## Configuration
 
@@ -81,17 +93,23 @@ values win.
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `theme` | `Dracula` | Theme name; unknown names fall back to the engine default |
+| `theme_light` / `theme_dark` | *(unset)* | Per-appearance theme names; unset sides fall back to `theme`. Follows system appearance live |
 | `font_size` | `13` | Terminal font size (integer ≥ 1) |
 | `font_family` | *(engine default)* | Monospace family name |
 | `padding` | `8` | Window padding in points (integer ≥ 0) |
 | `clear_on_open` | `true` | `true`: dismissing the float ends its shell; `false`: the shell survives hide/show |
 | `copy_on_select` | `true` | Copy selections to the clipboard as you make them |
-| `float_width` / `float_height` | `720` / `480` | Float size in points (clamped to the screen) |
-| `float_x` / `float_y` | *(centered, 110pt from top)* | Float position in points from the screen's top-left |
+| `link_url` | `true` | Open clicked links (allowlisted schemes only) |
+| `hotkey` | *(off)* | Global summon hotkey, e.g. `cmd+grave` (`cmd`/`ctrl`/`alt`/`shift` + a key). Applied at launch |
+| `float_width` / `float_height` | `560` / `360` | Default float size in points (clamped to the screen) |
+| `float_x` / `float_y` | *(centered, 110pt from top)* | Default float position in points from the screen's top-left |
 | `normal_title_bar` | `true` | `false` hides tiled windows' title bar |
 
 Quoted values (`theme = "Catppuccin Mocha"`) are supported. Changes apply on
-relaunch, or run `fantasma +reload-config`.
+relaunch, or run `fantasma +reload-config`. The float's last position and
+size persist to
+`~/Library/Application Support/Fantasma/state.toml`; explicit `float_*`
+config values always win over it.
 
 ## yabai
 
@@ -104,7 +122,21 @@ yabai -m rule --add app="^Fantasma$" title="^fantasma-float$" manage=off
 ## Extras
 
 `extras/fantasmasay "boo. terminals should float."` — the mascot ghost says
-your words (ASCII generated from the app icon; requires `cowsay`).
+your words. Self-contained (ASCII generated from the app icon).
+
+## Status
+
+Shipped: float with blur-dismiss and a summon handshake that survives window
+manager focus bounce · tiled windows · config file + Ghostty import ·
+Ghostty-style CLI · find bar (⌘F) · font zoom · busy-state titles ·
+bell → attention · live config reload · light/dark theme pairs ·
+cwd-aware spawning · float frame persistence · global hotkey ·
+URL allowlist with hover cursor.
+
+Engine-limited in the current libghostty-spm pin: numbered link hints
+(no API to enumerate on-screen links), and the theme catalog registry is
+empty at runtime — only built-in theme statics resolve (e.g. Dracula);
+arbitrary names fall back to the engine default.
 
 ## Development
 

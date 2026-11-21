@@ -22,8 +22,13 @@ for index in arguments.indices {
     }
 }
 if let file = pendingFrameFile {
-    let line = pendingFrame.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ";")
-    try? line.write(toFile: file, atomically: true, encoding: .utf8)
+    // FloatFrameState.parse format (`key = value` lines): the app-side
+    // consumer reuses that parser, so keep the formats identical.
+    let order = ["width", "height", "x", "y"]
+    let text = order.compactMap { key in
+        pendingFrame[key].map { "\(key) = \($0)" }
+    }.joined(separator: "\n")
+    try? text.write(toFile: file, atomically: true, encoding: .utf8)
 }
 if FantasmaCLI.handle(Array(arguments.dropFirst())) {
     // Let distributed posts flush before the process goes away.
