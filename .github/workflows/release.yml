@@ -71,7 +71,10 @@ jobs:
           set -euo pipefail
           version="$(tr -d '[:space:]' < VERSION)"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          ditto -c -k --keepParent Fantasma.app "Fantasma-$version-arm64.zip"
+          release_dir="$RUNNER_TEMP/Fantasma-$version"
+          mkdir -p "$release_dir"
+          ditto Fantasma.app "$release_dir/Fantasma.app"
+          ditto -c -k --keepParent "$release_dir" "Fantasma-$version-arm64.zip"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Upload signed ZIP
