@@ -3,9 +3,11 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: OverlayWindow?
+    private var surface: TerminalSurface?
     private var ignoresFocusLoss = false
     private var keyMonitor: Any?
     private var reopenTimestamp: Date?
+    private var isQuitting = false
     /// Debug: `--pin` disables auto-hide so scripted probes can inspect the
     /// window without fighting focus loss. Not used by normal operation.
     private let pinned = CommandLine.arguments.contains("--pin")
@@ -32,23 +34,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.isMovableByWindowBackground = true
         window.contentMinSize = OverlayGeometry.minimumSize
 
-        let content = PlaceholderContentView(frame: NSRect(origin: .zero, size: frame.size))
-        content.wantsLayer = true
-        content.layer?.cornerRadius = cornerRadius
-        content.layer?.masksToBounds = true
-        window.contentView = content
+        let contentFrame = NSRect(origin: .zero, size: frame.size)
+        let surface = TerminalSurface(frame: contentFrame)
+        surface.onShellExit = { [weak self] in
+            self?.quitFromShellExit()
+        }
+        surface.terminalView.wantsLayer = true
+        surface.terminalView.layer?.cornerRadius = cornerRadius
+        surface.terminalView.layer?.masksToBounds = true
+        window.contentView = surface.terminalView
 
         // Borderless windows get no standard edge-resize affordance from
         // .resizable alone; the controller view supplies it (KTD11).
-        let edges = EdgeResizeControllerView(frame: content.bounds)
+        let edges = EdgeResizeControllerView(frame: contentFrame)
         edges.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(edges)
+        surface.terminalView.addSubview(edges)
         NSLayoutConstraint.activate([
-            edges.topAnchor.constraint(equalTo: content.topAnchor),
-            edges.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            edges.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            edges.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            edges.topAnchor.constraint(equalTo: surface.terminalView.topAnchor),
+            edges.bottomAnchor.constraint(equalTo: surface.terminalView.bottomAnchor),
+            edges.leadingAnchor.constraint(equalTo: surface.terminalView.leadingAnchor),
+            edges.trailingAnchor.constraint(equalTo: surface.terminalView.trailingAnchor),
         ])
+
+        // Keep the grid fitted to the window as it resizes.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidResize(_:)),
+            name: NSWindow.didResizeNotification,
+            object: window
+        )
 
         NotificationCenter.default.addObserver(
             self,
@@ -82,7 +96,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         self.window = window
+        self.surface = surface
         show()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Tear the surface down explicitly so the PTY does not linger.
+        surface?.terminalView.controller = nil
+        surface = nil
+    }
+
+    @objc private func windowDidResize(_ notification: Notification) {
+        surface?.fitToSize()
+    }
+
+    private func quitFromShellExit() {
+        guard !isQuitting else { return }
+        isQuitting = true
+        NSApp.terminate(nil)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -120,16 +151,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func focusContent() {
-        // The focus binding lands only after the content view mounts; retry
+        // The Ghostty surface becomes first responder via its own focus
+        // path; the binding lands only after the view mounts, so retry
         // with a hard cap instead of spinning (KTD4).
-        guard let window, let content = window.contentView else { return }
-        window.makeFirstResponder(content)
+        guard let window, let surface else { return }
+        surface.focus()
         guard window.firstResponder === window else { return }
         var attempts = 0
         func retry() {
             guard attempts < 10 else { return }
             attempts += 1
-            window.makeFirstResponder(content)
+            surface.focus()
             if window.firstResponder === window {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { retry() }
             }
@@ -151,35 +183,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func appDidResignActive(_ notification: Notification) {
         guard !pinned, !ignoresFocusLoss else { return }
         hide()
-    }
-}
-
-/// U1 placeholder: an editable text view inside the rounded content view so
-/// the keystroke probe can prove the borderless window receives typing.
-/// U2 replaces the window content with the terminal surface.
-private final class PlaceholderContentView: NSView {
-    private let field: NSTextView
-
-    override init(frame frameRect: NSRect) {
-        field = NSTextView(frame: frameRect.insetBy(dx: 24, dy: 24))
-        super.init(frame: frameRect)
-        field.string = "fantasma — U1 window probe"
-        field.isEditable = true
-        field.backgroundColor = NSColor(red: 0.157, green: 0.161, blue: 0.212, alpha: 1) // #282a36
-        field.textColor = .white
-        field.autoresizingMask = [.width, .height]
-        addSubview(field)
-    }
-
-    override var isFlipped: Bool { true }
-
-    override func becomeFirstResponder() -> Bool {
-        window?.makeFirstResponder(field)
-        return super.becomeFirstResponder()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
     }
 }
