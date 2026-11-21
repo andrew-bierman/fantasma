@@ -15,7 +15,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let cornerRadius: CGFloat = 14
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        log("launch")
         // Accessory first: flipping the policy while active resigns active
         // immediately (KTD3).
         NSApp.setActivationPolicy(.accessory)
