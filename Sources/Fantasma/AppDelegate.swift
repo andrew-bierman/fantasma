@@ -315,6 +315,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // Our own LS activation request (see activateAttempt) lands here
+        // while the summon handshake is running: do not treat it as a
+        // toggle — it would hide the float we are trying to summon.
+        if let window, window.isVisible, !gate.armed {
+            return false
+        }
         // Launcher double-fire debounce (~200 ms) so one hotkey tap cannot
         // toggle twice (KTD4).
         if let last = reopenTimestamp, Date().timeIntervalSince(last) < 0.2 {
@@ -397,6 +403,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             scheduleArmHold()
         case .retry:
             fantasmaLog("activation retry in 0.25s (\(gate.attemptsLeft) left)")
+            // NSApp.activate is refused outright on modern macOS unless the
+            // system deems us activation-eligible; LaunchServices-mediated
+            // activation (reopen on our own bundle) carries real system
+            // rights and is the path that reliably works. Fire it after the
+            // first two plain attempts have failed.
+            if gate.attemptsLeft <= 4 {
+                let bundlePath = Bundle.main.bundlePath
+                if !bundlePath.isEmpty {
+                    fantasmaLog("requesting LS reopen activation")
+                    NSWorkspace.shared.open(URL(fileURLWithPath: bundlePath))
+                }
+            }
             let work = DispatchWorkItem { [weak self] in self?.activateAttempt() }
             activationRetry = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
