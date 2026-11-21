@@ -92,6 +92,25 @@ final class FantasmaConfigTests: XCTestCase {
         XCTAssertEqual(config.fontSize, 16)
     }
 
+    func testRealDefaultPathLoadsAndRestoresUserFile() throws {
+        // Regression: the tilde-prefixed default path must be expanded
+        // before reading (a dropped expandingTildeInPath silently yields
+        // defaults). Back up and restore any real user config around it.
+        let dir = NSHomeDirectory() + "/.config/fantasma"
+        let path = dir + "/fantasma.conf"
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let backup = try? String(contentsOfFile: path, encoding: .utf8)
+        try "float_width = 777".write(toFile: path, atomically: true, encoding: .utf8)
+        defer {
+            if let backup {
+                try? backup.write(toFile: path, atomically: true, encoding: .utf8)
+            } else {
+                try? FileManager.default.removeItem(atPath: path)
+            }
+        }
+        XCTAssertEqual(FantasmaConfigLoader.load().floatWidth, 777)
+    }
+
     func testGhosttyDashKeysNormalizeToSnake() {
         XCTAssertEqual(FantasmaConfigLoader.parse_key("font-size"), "font_size")
         XCTAssertEqual(FantasmaConfigLoader.parse_key("WINDOW-PADDING-X"), "window_padding_x")
