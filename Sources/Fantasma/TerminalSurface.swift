@@ -22,6 +22,11 @@ final class TerminalSurface: NSObject {
     /// reach it.
     var onShellExit: (() -> Void)?
 
+    /// The `link_url` gate, captured at surface creation like the other
+    /// engine-side settings: false keeps links rendered (that lives in the
+    /// engine) but the open path below drops every request.
+    private let allowsLinkOpen: Bool
+
     private static let termName = "xterm-256color"
 
     init(frame: NSRect, config: FantasmaConfig) {
@@ -49,6 +54,7 @@ final class TerminalSurface: NSObject {
         )
         terminalView = TerminalView(frame: frame)
         fontZoom = FontZoom(defaultFontSize: config.fontSize)
+        allowsLinkOpen = config.linkUrl
         super.init()
 
         terminalView.delegate = self
@@ -194,6 +200,7 @@ extension TerminalSurface: TerminalSurfaceOpenURLDelegate {
     private static let openURLSchemes: Set<String> = ["http", "https", "mailto"]
 
     func terminalDidRequestOpenURL(_ url: String, kind: TerminalOpenURLKind) {
+        guard allowsLinkOpen else { return }
         let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let parsed = URL(string: trimmed),
               let scheme = parsed.scheme?.lowercased(),

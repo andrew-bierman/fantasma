@@ -21,6 +21,7 @@ struct FantasmaConfig: Equatable {
     var hotkey = ""
     var themeLight: String? = nil
     var themeDark: String? = nil
+    var linkUrl = true
 }
 
 enum FantasmaConfigLoader {
@@ -48,6 +49,7 @@ enum FantasmaConfigLoader {
             # float_height = 620
             # float_x = 200            # omitted: centered horizontally
             # float_y = 110            # omitted: 110pt from the top
+            # link_url = true          # false: links still render but cmd-click never opens
             """.write(toFile: resolved, atomically: true, encoding: .utf8)
         }
         return resolved
@@ -164,6 +166,9 @@ enum FantasmaConfigLoader {
         }
         if let dark = values["theme_dark"], !dark.isEmpty {
             config.themeDark = dark
+        }
+        if let link = bool(values["link_url"]) {
+            config.linkUrl = link
         }
         return config
     }

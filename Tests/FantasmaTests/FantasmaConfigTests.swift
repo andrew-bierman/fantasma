@@ -21,7 +21,8 @@ final class FantasmaConfigTests: XCTestCase {
             floatHeight: nil,
             floatX: nil,
             floatY: nil,
-            normalTitleBar: true
+            normalTitleBar: true,
+            linkUrl: true
         ))
     }
 
@@ -114,6 +115,20 @@ final class FantasmaConfigTests: XCTestCase {
     func testGhosttyDashKeysNormalizeToSnake() {
         XCTAssertEqual(FantasmaConfigLoader.parse_key("font-size"), "font_size")
         XCTAssertEqual(FantasmaConfigLoader.parse_key("WINDOW-PADDING-X"), "window_padding_x")
+    }
+
+    func testLinkUrlGateParses() {
+        XCTAssertEqual(FantasmaConfig().linkUrl, true)
+        let off = FantasmaConfigLoader.load(path: writeTemp("link_url = false"))
+        XCTAssertEqual(off.linkUrl, false)
+        let offGhosttyDash = FantasmaConfigLoader.load(
+            path: "/tmp/does-not-exist-fantasma.conf",
+            ghosttyPath: writeTemp("link-url = NO")
+        )
+        XCTAssertEqual(offGhosttyDash.linkUrl, false)
+        // Unparseable values keep the default rather than silently disabling.
+        let garbage = FantasmaConfigLoader.load(path: writeTemp("link_url = sometimes"))
+        XCTAssertEqual(garbage.linkUrl, true)
     }
 
     func testUnknownKeysAndCommentsIgnored() {
