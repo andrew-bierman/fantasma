@@ -108,6 +108,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: .fantasmaNewWindow,
             object: nil
         )
+        DistributedNotificationCenter.default.addObserver(
+            self,
+            selector: #selector(toggleFloatRequested(_:)),
+            name: .fantasmaToggleFloat,
+            object: nil
+        )
 
         self.window = window
         show()
@@ -203,6 +209,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func newWindowRequested(_ notification: Notification) {
         openNormalWindow()
+    }
+
+    @objc private func toggleFloatRequested(_ notification: Notification) {
+        toggle()
     }
 
     private func openNormalWindow() {        let controller = NormalWindowController(config: config)

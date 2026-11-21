@@ -96,7 +96,13 @@ enum FantasmaConfigLoader {
                 continue
             }
             let key = keyNormalize(line[..<separator].trimmingCharacters(in: .whitespaces))
-            let value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespaces)
+            var value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespaces)
+            // Strip one layer of wrapping quotes (ghostty allows quoted values).
+            if value.count >= 2,
+               (value.hasPrefix("\"") && value.hasSuffix("\"")) ||
+               (value.hasPrefix("'") && value.hasSuffix("'")) {
+                value = String(value.dropFirst().dropLast())
+            }
             guard !key.isEmpty, !value.isEmpty else { continue }
             values[key] = value
         }
