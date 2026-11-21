@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var reopenTimestamp: Date?
     private var isQuitting = false
     private let pinned = CommandLine.arguments.contains("--pin")
+    private let config = FantasmaConfigLoader.load()
 
     private let cornerRadius: CGFloat = 14
 
@@ -24,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
+        // Yabai/AX-visible title for the title-scoped tile exemption (R18,
+        // KTD15); invisible in the borderless window itself.
+        window.title = "fantasma-float"
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isOpaque = false
@@ -32,33 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.isMovableByWindowBackground = true
         window.contentMinSize = OverlayGeometry.minimumSize
 
-        let contentFrame = NSRect(origin: .zero, size: frame.size)
-        let surface = TerminalSurface(frame: contentFrame)
-        surface.onShellExit = { [weak self] in
-            self?.quitFromShellExit()
-        }
-
-        // The terminal view renders into its own Metal layer, which does not
-        // inherit corner clipping; a plain container owns the rounded mask.
-        let container = NSView(frame: contentFrame)
-        container.wantsLayer = true
-        container.layer?.cornerRadius = cornerRadius
-        container.layer?.masksToBounds = true
-        container.autoresizingMask = [.width, .height]
-        surface.terminalView.frame = contentFrame
-        surface.terminalView.autoresizingMask = [.width, .height]
-        container.addSubview(surface.terminalView)
-        window.contentView = container
-
-        let edgeResizer = EdgeResizeControllerView(frame: contentFrame)
-        edgeResizer.translatesAutoresizingMaskIntoConstraints = false
-        surface.terminalView.addSubview(edgeResizer)
-        NSLayoutConstraint.activate([
-            edgeResizer.topAnchor.constraint(equalTo: surface.terminalView.topAnchor),
-            edgeResizer.bottomAnchor.constraint(equalTo: surface.terminalView.bottomAnchor),
-            edgeResizer.leadingAnchor.constraint(equalTo: surface.terminalView.leadingAnchor),
-            edgeResizer.trailingAnchor.constraint(equalTo: surface.terminalView.trailingAnchor),
-        ])
+        attachSurface(to: window, frame: NSRect(origin: .zero, size: frame.size))
 
         NotificationCenter.default.addObserver(
             self,
@@ -97,7 +75,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         self.window = window
-        self.surface = surface
         show()
     }
 
@@ -134,6 +111,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    // MARK: - Surface lifecycle
+
+    /// Builds a configured surface and installs it as the window's content.
+    private func attachSurface(to window: NSWindow, frame: NSRect) {
+        let surface = TerminalSurface(frame: frame, config: config)
+        surface.onShellExit = { [weak self] in
+            self?.quitFromShellExit()
+        }
+
+        // The terminal view renders into its own Metal layer, which does not
+        // inherit corner clipping; a plain container owns the rounded mask.
+        let container = NSView(frame: frame)
+        container.wantsLayer = true
+        container.layer?.cornerRadius = cornerRadius
+        container.layer?.masksToBounds = true
+        container.autoresizingMask = [.width, .height]
+        surface.terminalView.frame = frame
+        surface.terminalView.autoresizingMask = [.width, .height]
+        container.addSubview(surface.terminalView)
+        window.contentView = container
+
+        let edgeResizer = EdgeResizeControllerView(frame: frame)
+        edgeResizer.translatesAutoresizingMaskIntoConstraints = false
+        surface.terminalView.addSubview(edgeResizer)
+        NSLayoutConstraint.activate([
+            edgeResizer.topAnchor.constraint(equalTo: surface.terminalView.topAnchor),
+            edgeResizer.bottomAnchor.constraint(equalTo: surface.terminalView.bottomAnchor),
+            edgeResizer.leadingAnchor.constraint(equalTo: surface.terminalView.leadingAnchor),
+            edgeResizer.trailingAnchor.constraint(equalTo: surface.terminalView.trailingAnchor),
+        ])
+
+        self.surface = surface
+    }
+
     // MARK: - Show / hide / toggle
 
     private func toggle() {
@@ -148,6 +159,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func show() {
         guard let window else { return }
         ignoresFocusLoss = true
+        // clear_on_open: dismissal tore the shell down, so every summon is a
+        // fresh session (R17). Without it the same surface returns (v1).
+        if surface == nil {
+            attachSurface(
+                to: window,
+                frame: NSRect(origin: .zero, size: window.frame.size)
+            )
+        }
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         focusContent()
@@ -171,6 +190,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func hide() {
-        window?.orderOut(nil)
+        guard let window else { return }
+        window.orderOut(nil)
+        // clear_on_open (R17): the shell dies here by design; the surface's
+        // expected-teardown state keeps this off the quit path (KTD14).
+        if config.clearOnOpen {
+            surface?.teardown()
+            surface = nil
+        }
     }
 }
