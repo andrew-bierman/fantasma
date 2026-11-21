@@ -19,7 +19,10 @@ req = urllib.request.Request(
 )
 with urllib.request.urlopen(req) as r:
     data = json.load(r)
-print(data["assets"][0]["browser_download_url"])
+for asset in data["assets"]:
+    if asset["name"].endswith(".zip"):
+        print(asset["browser_download_url"])
+        break
 PYEOF
 )"
 [ -n "$ASSET_URL" ] || fail "could not resolve the latest release asset"
@@ -28,12 +31,19 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 echo "Downloading $ASSET_URL"
 curl -fsSL "$ASSET_URL" -o "$TMP/fantasma.zip" || fail "download failed"
+unzip -q "$TMP/fantasma.zip" -d "$TMP"
+
+# Find the app in the archive WITHOUT touching the existing install — the
+# old app is only removed after a candidate is verified on disk.
+APP_SRC=""
+for candidate in "$TMP"/Fantasma-*/Fantasma.app "$TMP"/*.app; do
+  if [ -d "$candidate" ]; then APP_SRC="$candidate"; break; fi
+done
+[ -n "$APP_SRC" ] || fail "could not find Fantasma.app in the archive"
 
 mkdir -p "$DEST"
 rm -rf "$DEST/Fantasma.app"
-unzip -q "$TMP/fantasma.zip" -d "$TMP"
-cp -R "$TMP"/*.app "$DEST/" ||
-  fail "could not find Fantasma.app in the archive"
+cp -R "$APP_SRC" "$DEST/Fantasma.app"
 rm -rf "$DEST/Fantasma.app/Contents/Resources/GhosttyKit_GhosttyTerminal.bundle/_CodeSignature" 2>/dev/null || true
 xattr -dr com.apple.quarantine "$DEST/Fantasma.app" 2>/dev/null || true
 
