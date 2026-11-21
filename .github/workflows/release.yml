@@ -1,0 +1,97 @@
+name: release
+
+# Runs on version tags. Builds, tests, then — when signing secrets are
+# configured — Developer-ID-signs, notarizes, staples, publishes the release
+# asset and updates the Homebrew tap. Without secrets it still publishes,
+# just unsigned (ad-hoc signed by build-app.sh).
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache SwiftPM + XCFramework
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Build + test
+        run: |
+          swift build -c release
+          swift test
+
+      - name: Assemble app bundle
+        run: scripts/build-app.sh
+
+      - name: Import Developer ID certificate
+        if: ${{ secrets.APPLE_CERTIFICATE_P12 != '' }}
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          CERT="$RUNNER_TEMP/cert.p12"
+          KEYCHAIN="$RUNNER_TEMP/build.keychain"
+          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > "$CERT"
+          security create-keychain -p fantasma-ci "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security import "$CERT" -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k fantasma-ci "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN" login.keychain-db
+
+      - name: Sign + notarize + staple
+        if: ${{ secrets.APPLE_CERTIFICATE_P12 != '' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        run: |
+          scripts/notarize.sh
+          security delete-keychain "$RUNNER_TEMP/build.keychain" || true
+
+      - name: Zip
+        run: ditto -c -k --keepParent Fantasma.app "Fantasma-${GITHUB_REF_NAME#v}-arm64.zip"
+
+      - name: Publish release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          ZIP: Fantasma-${{ github.ref_name }}-arm64.zip
+        run: |
+          gh release upload "$TAG" "$ZIP" --clobber 2>/dev/null \
+            || gh release create "$TAG" "$ZIP" --title "Fantasma $TAG" \
+                 --notes "See commits since the previous release. Apple silicon build."
+
+      - name: Update Homebrew tap
+        if: ${{ secrets.TAP_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          ZIP: Fantasma-${{ github.ref_name }}-arm64.zip
+        run: |
+          VERSION="${TAG#v}"
+          SHA256=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/andrew-bierman/homebrew-tap.git" /tmp/tap
+          sed -i '' -E "s/sha256 \".*\"/sha256 \"$SHA256\"/; s/version \".*\"/version \"$VERSION\"/" \
+            /tmp/tap/Casks/fantasma.rb
+          git -C /tmp/tap user.email "ci@fantasma.local" >/dev/null 2>&1 || git -C /tmp/tap config user.email "ci@fantasma.local"
+          git -C /tmp/tap config user.name "fantasma-ci"
+          git -C /tmp/tap add -A && git -C /tmp/tap commit -q -m "🔖 fantasma $VERSION"
+          git -C /tmp/tap push -q origin main

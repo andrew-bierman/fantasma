@@ -36,7 +36,19 @@ ZIP="$ROOT/Fantasma-notarize.zip"
 ditto -c -k --keepParent "$APP" "$ZIP"
 
 echo "Submitting to Apple notary service (this can take a few minutes)..."
-SUBMIT_OUT="$(xcrun notarytool submit "$ZIP" --keychain-profile fantasma-notary --wait 2>&1)"
+# Keychain profile preferred (local one-time setup); APPLE_ID/APPLE_PASSWORD/
+# APPLE_TEAM_ID env credentials are the fallback (this is how CI calls it).
+AUTH=()
+if security find-generic-password -s "com.apple.notarytool.fantasma-notary" >/dev/null 2>&1; then
+  AUTH=(--keychain-profile fantasma-notary)
+elif [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+  AUTH=(--apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID")
+else
+  echo "No notary credentials: store a keychain profile via 'notarytool
+store-credentials fantasma-notary', or set APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID." >&2
+  exit 1
+fi
+SUBMIT_OUT="$(xcrun notarytool submit "$ZIP" "${AUTH[@]}" --wait 2>&1)"
 echo "$SUBMIT_OUT" | tail -5
 echo "$SUBMIT_OUT" | grep -q "status: Accepted" || {
   echo "Notarization did not complete — fetch the log:" >&2

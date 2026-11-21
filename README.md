@@ -151,6 +151,18 @@ scripts/notarize.sh       # optional: Developer ID sign + notarize + staple
 Every PR that changes code must bump `VERSION` — a GitHub Action enforces it.
 Releases are cut only from `main`, and tags are immutable.
 
+Pushing a `v*` tag runs the release workflow: build, tests, then — when the
+signing secrets below are configured — Developer ID signing, notarization,
+stapling, release asset, and a Homebrew tap checksum update. Without secrets
+it publishes unsigned.
+
+| Secret | Meaning |
+|--------|---------|
+| `APPLE_CERTIFICATE_P12` | Base64 of the Developer ID Application `.p12` export |
+| `APPLE_CERTIFICATE_PASSWORD` | Password chosen when exporting the `.p12` |
+| `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | Notary service auth (`APPLE_PASSWORD` is an app-specific password) |
+| `TAP_TOKEN` | Optional: PAT with push access to `homebrew-tap`, for automatic cask updates |
+
 ## License
 
 GPL-3.0 — see [LICENSE](LICENSE). The libghostty engine it embeds is MIT.
