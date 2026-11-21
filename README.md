@@ -119,4 +119,4 @@ Releases are cut only from `main`, and tags are immutable.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+GPL-3.0 — see [LICENSE](LICENSE). The libghostty engine it embeds is MIT.
