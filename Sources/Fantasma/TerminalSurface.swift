@@ -102,7 +102,9 @@ final class TerminalSurface: NSObject {
         return "/bin/sh -c '\("exec \(quoted) -l")'"
     }
 
-    private static func loginShellPath() -> String {
+    /// The user's login shell path; shared with NormalWindowController so
+    /// busy-state titles compare against the same shell this surface execs.
+    static func loginShellPath() -> String {
         if let pw = getpwuid(getuid()), let shell = pw.pointee.pw_shell {
             let path = String(cString: shell)
             if !path.isEmpty { return path }
