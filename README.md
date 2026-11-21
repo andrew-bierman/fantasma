@@ -10,10 +10,6 @@ windows** your tiling manager treats like any other app. Built on
 [libghostty](https://github.com/Lakr233/libghostty-spm) (Ghostty's terminal
 engine, packaged for Apple platforms).
 
-<p align="center">
-  <img src="docs/screenshots/float.png" width="560" alt="The fantasma float">
-</p>
-
 No tabs. No splits. A quick terminal and regular windows, done well.
 
 ## Install
