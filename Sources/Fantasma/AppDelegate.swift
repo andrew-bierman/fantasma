@@ -114,23 +114,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return event
         }
 
-        DistributedNotificationCenter.default.addObserver(
+        // suspensionBehavior .deliverImmediately: macOS naps hidden
+        // accessory apps, and the default (.coalesce) drops distributed
+        // posts to them — the CLI would summon nothing.
+        DistributedNotificationCenter.default().addObserver(
             self,
             selector: #selector(newWindowRequested(_:)),
             name: .fantasmaNewWindow,
-            object: nil
+            object: nil,
+            suspensionBehavior: .deliverImmediately
         )
-        DistributedNotificationCenter.default.addObserver(
+        DistributedNotificationCenter.default().addObserver(
             self,
             selector: #selector(toggleFloatRequested(_:)),
             name: .fantasmaToggleFloat,
-            object: nil
+            object: nil,
+            suspensionBehavior: .deliverImmediately
         )
-        DistributedNotificationCenter.default.addObserver(
+        DistributedNotificationCenter.default().addObserver(
             self,
             selector: #selector(reloadConfigRequested(_:)),
             name: .fantasmaReloadConfig,
-            object: nil
+            object: nil,
+            suspensionBehavior: .deliverImmediately
         )
 
         self.window = window
@@ -410,7 +416,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         armHold = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+        // 1.0 s: sampled WM focus bounce (yabai restoring the terminal)
+        // lands ~0.2–0.3 s AFTER a successful arm on this setup — a 0.5 s
+        // hold arms right before the bounce and the float flashes away.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
     }
 
     private func cancelSummonTimers() {
