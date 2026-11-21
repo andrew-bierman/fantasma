@@ -5,6 +5,7 @@ import Carbon.HIToolbox
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: OverlayWindow?
     private var surface: TerminalSurface?
+    private var findBar: FindBarController?
     private var gate = SummonGate()
     private var activationRetry: DispatchWorkItem?
     private var armHold: DispatchWorkItem?
@@ -101,6 +102,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return nil
                 }
                 switch event.charactersIgnoringModifiers {
+                case "f":
+                    self?.findBar?.toggle()
+                    return nil
                 case "w":
                     self?.hide()
                     return nil
@@ -117,6 +121,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return nil
                 }
                 switch event.charactersIgnoringModifiers {
+                case "f":
+                    normal.toggleFind()
+                    return nil
                 case "w":
                     normal.close()
                     return nil
@@ -440,6 +447,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ])
 
         self.surface = surface
+        // Find bar rides the surface lifecycle: a torn-down surface ended
+        // its engine search thread, so every mount starts with a fresh,
+        // closed bar bound to the new surface.
+        let findBar = FindBarController(surface: surface)
+        findBar.attach(to: container)
+        self.findBar = findBar
     }
 
     /// Feeds this surface's OSC 7 reports into the shared tracker, keyed
@@ -574,6 +587,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // persist point that sees a plain drag-move (no live resize).
         persistFloatFrame()
         fantasmaLog("hide")
+        // End the search while the surface is still live; with clear_on_open
+        // the bar is rebuilt fresh on the next summon anyway.
+        findBar?.close()
         window.orderOut(nil)
         // clear_on_open (R17): the shell dies here by design; the surface's
         // expected-teardown state keeps this off the quit path (KTD14).
