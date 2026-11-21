@@ -135,3 +135,30 @@ extension TerminalSurface: TerminalSurfaceCloseDelegate {
         onShellExit?()
     }
 }
+
+extension TerminalSurface: TerminalSurfaceBellDelegate {
+    func terminalDidRingBell() {
+        NSSound.beep()
+        // Dock attention is only meaningful when the user is somewhere
+        // else; bouncing while Fantasma is frontmost is just noise.
+        guard !NSApp.isActive else { return }
+        NSApp.requestUserAttention(.informationalRequest)
+    }
+}
+
+extension TerminalSurface: TerminalSurfaceOpenURLDelegate {
+    /// Schemes Fantasma will hand to the system opener. A terminal must
+    /// never become a launcher for arbitrary URL schemes (file:, custom
+    /// app schemes, …), so anything outside this allowlist is dropped
+    /// silently.
+    private static let openURLSchemes: Set<String> = ["http", "https", "mailto"]
+
+    func terminalDidRequestOpenURL(_ url: String, kind: TerminalOpenURLKind) {
+        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let parsed = URL(string: trimmed),
+              let scheme = parsed.scheme?.lowercased(),
+              Self.openURLSchemes.contains(scheme)
+        else { return }
+        NSWorkspace.shared.open(parsed)
+    }
+}
