@@ -21,10 +21,12 @@ find "$ROOT/.build" -maxdepth 4 -name "*.bundle" -type d 2>/dev/null | while rea
     cp -R "$bundle" "$APP/Contents/Resources/"
 done
 
-# App icon
-if [ -f "$ROOT/Assets/AppIcon.icns" ]; then
-    cp "$ROOT/Assets/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-fi
+# Compile the layered icon and its fallback for older macOS versions.
+ICON_PLIST="$ROOT/.build/app-icon.plist"
+xcrun actool "$ROOT/Assets/AppIcon.icon" \
+    --compile "$APP/Contents/Resources" \
+    --platform macosx --minimum-deployment-target 14.0 \
+    --app-icon AppIcon --output-partial-info-plist "$ICON_PLIST"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -43,8 +45,6 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <string>Fantasma</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
     <string>${VERSION}</string>
     <key>CFBundleVersion</key>
@@ -56,6 +56,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+/usr/libexec/PlistBuddy -c "Merge '$ICON_PLIST'" "$APP/Contents/Info.plist"
 
 # Ad-hoc signature so the app launches locally; a real Developer ID signature
 # (needed for notarization) is applied by scripts/notarize.sh.

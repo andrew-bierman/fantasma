@@ -502,9 +502,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
         window.makeKeyAndOrderFront(nil)
+        applyOneShotFrame()
         focusContent()
         fantasmaLog("show")
         activateAttempt()
+    }
+
+    /// One-shot frame override from the CLI (`+toggle-float --width …`).
+    /// The CLI writes /tmp/fantasma-pending-frame in FloatFrameState's
+    /// `key = value` format; it wins over config and state for exactly one
+    /// summon, then the file is consumed. (Regression fix: the fleet's
+    /// frame-persistence work replaced the launch-frame path and dropped
+    /// the consumer, leaving the CLI flags dead.)
+    private func applyOneShotFrame() {
+        let path = "/tmp/fantasma-pending-frame"
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return }
+        try? FileManager.default.removeItem(atPath: path)
+        guard let window, let visible = NSScreen.main?.visibleFrame else { return }
+        let oneShot = FloatFrameState.parse(text)
+        var size = window.frame.size
+        if let width = oneShot.width { size.width = CGFloat(width) }
+        if let height = oneShot.height { size.height = CGFloat(height) }
+        size.width = min(max(size.width, OverlayGeometry.minimumSize.width), visible.width)
+        size.height = min(max(size.height, OverlayGeometry.minimumSize.height), visible.height)
+        var origin = window.frame.origin
+        if let x = oneShot.x { origin.x = visible.minX + CGFloat(x) }
+        if let y = oneShot.y { origin.y = visible.maxY - CGFloat(y) - size.height }
+        origin.x = min(max(origin.x, visible.minX), visible.maxX - size.width)
+        origin.y = min(max(origin.y, visible.minY), visible.maxY - size.height)
+        window.setFrame(NSRect(origin: origin, size: size), display: true)
+        fantasmaLog("one-shot frame: \(Int(size.width))x\(Int(size.height)) @ \(Int(origin.x)),\(Int(origin.y))")
     }
 
     /// Fight for focus until it actually sticks, instead of assuming a fixed
