@@ -10,7 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isQuitting = false
     private var normalWindows: [NormalWindowController] = []
     private let pinned = CommandLine.arguments.contains("--pin")
-    private let config = FantasmaConfigLoader.load()
+    private var config = FantasmaConfigLoader.load()
 
     private let cornerRadius: CGFloat = 14
 
@@ -114,6 +114,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: .fantasmaToggleFloat,
             object: nil
         )
+        DistributedNotificationCenter.default.addObserver(
+            self,
+            selector: #selector(reloadConfigRequested(_:)),
+            name: .fantasmaReloadConfig,
+            object: nil
+        )
 
         self.window = window
         show()
@@ -213,6 +219,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleFloatRequested(_ notification: Notification) {
         toggle()
+    }
+
+    @objc private func reloadConfigRequested(_ notification: Notification) {
+        let previous = config
+        config = FantasmaConfigLoader.load()
+        guard config != previous else { return }
+        // Hard rule: live shells survive a reload. New windows already read
+        // `config` at creation, so every future surface picks up the new
+        // values with no further work. The one safe in-place refresh is the
+        // float's surface under clear_on_open — that shell dies on the next
+        // hide anyway, so rebuilding it now honors theme/font/padding
+        // immediately; with clear_on_open off the float keeps its surface
+        // until relaunch.
+        guard config.clearOnOpen, let window else { return }
+        let surfaceChanged = config.theme != previous.theme
+            || config.fontSize != previous.fontSize
+            || config.padding != previous.padding
+            || config.fontFamily != previous.fontFamily
+            || config.copyOnSelect != previous.copyOnSelect
+        guard surfaceChanged, let surface else { return }
+        surface.teardown()
+        self.surface = nil
+        attachSurface(to: window, frame: NSRect(origin: .zero, size: window.frame.size))
+        // Re-anchor input only when the float already owns it; never steal
+        // focus from another app because a config file changed.
+        if window.isKeyWindow {
+            focusContent()
+        }
     }
 
     private func openNormalWindow() {        let controller = NormalWindowController(config: config)
