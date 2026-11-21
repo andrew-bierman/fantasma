@@ -11,6 +11,7 @@ final class NormalWindowController: NSObject, NSWindowDelegate {
     /// Internal so the app layer can wire working-directory tracking and
     /// read the surface's identity without another pass-through property.
     let surface: TerminalSurface
+    private let findBar: FindBarController
     private let shellName: String
     /// Login shell pid once observed at the pty's foreground (BusyTitle).
     private var shellPid: pid_t?
@@ -45,12 +46,14 @@ final class NormalWindowController: NSObject, NSWindowDelegate {
             workingDirectory: workingDirectory
         )
         shellName = (TerminalSurface.loginShellPath() as NSString).lastPathComponent
+        findBar = FindBarController(surface: surface)
         super.init()
 
         surface.onShellExit = { [weak self] in
             self?.close()
         }
         window.contentView = surface.terminalView
+        findBar.attach(to: surface.terminalView)
         window.delegate = self
         startTitlePolling()
     }
@@ -76,12 +79,19 @@ final class NormalWindowController: NSObject, NSWindowDelegate {
         surface.applyTheme(named: name)
     }
 
+    /// ⌘F: open/refocus/close the scrollback find bar.
+    func toggleFind() {
+        findBar.toggle()
+    }
+
     /// Explicit close: tears the surface down (expected teardown — this
     /// window's shell ends but the app stays up) and notifies the owner.
     func close() {
         guard !closed else { return }
         closed = true
         stopTitlePolling()
+        // End the engine search before the surface it is bound to goes away.
+        findBar.close()
         surface.teardown()
         window.orderOut(nil)
         let finished = self
