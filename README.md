@@ -4,147 +4,118 @@
   <img src="Assets/icon-source.png" width="180" alt="Fantasma icon">
 </p>
 
-A macOS overlay terminal that recreates foot's quick-terminal UX: a hotkey
-summons a floating, rounded, chrome-less terminal that takes keyboard focus
-instantly; clicking away hides it, and the shell inside keeps running.
-Summon it again and everything — scrollback, running jobs, working
-directory — is still there. It also opens normal, tiled terminal windows
-for everyday use.
+A macOS terminal with two modes: a **float** — a small, rounded, chrome-less
+overlay that summons with a hotkey, takes focus instantly, and dismisses on
+blur — and normal **tiled windows** your tiling manager treats like any other
+app. Built on [libghostty](https://github.com/Lakr233/libghostty-spm)
+(Ghostty's terminal engine, packaged for Apple platforms).
 
 <p align="center">
-  <img src="docs/screenshots/float.png" width="420" alt="The fantasma float">
-  <img src="docs/screenshots/tiled.png" width="420" alt="A tiled fantasma window">
+  <img src="docs/screenshots/float.png" width="560" alt="The fantasma float">
 </p>
 
-Built on [libghostty](https://github.com/Lakr233/libghostty-spm)
-(Ghostty's terminal engine, packaged for Apple platforms). Fantasma is not
-a terminal emulator and not a full terminal app: two window modes, no tabs.
-
-## Roadmap
-
-Shipped:
-
-- [x] Float summon/dismiss with preserved shell (foot's flow)
-- [x] Rounded corners, chrome-less, no Dock icon
-- [x] Clear-on-open vs persistent shell (config)
-- [x] Normal tiled window mode alongside the float
-- [x] Theme, font size, padding, float size/position via config
-- [x] Reads your existing Ghostty config (`theme`, `font-size`, `window-padding-x`, `copy-on-select`, `font-family`)
-- [x] Copy on select
-- [x] Cmd+drag move, edge/corner resize, title-bar toggle for normal windows
-- [x] App icon, yabai title-scoped exemption
-- [x] Homebrew tap (`brew install --cask andrew-bierman/tap/fantasma`)
-
-Planned:
-
-- [ ] Scrollback find bar (⌘F, via Ghostty search bindings)
-- [ ] Font zoom (⌘+/⌘−/⌘0) and font weight/line-height config
-- [ ] Busy-state window titles (foreground command basename)
-- [ ] cwd-aware summon (OSC 7: open where the frontmost window is)
-- [ ] Bell → notification, URL opening + foot-style hints mode
-- [ ] Light/dark appearance pairs, config reload
-- [ ] In-app global hotkey (drop the Tinycast dependency)
-
-Foot-parity gaps we intend to close: URL launching with OSC 8 hints,
-copy-on-select to the primary selection, and SIGHUP-style config reload.
-Foot's server/client spawn model is noted but likely never — libghostty
-surfaces already start fast.
+No tabs. No splits. A quick terminal and regular windows, done well.
 
 ## Install
 
-Build from source:
+One-liner (Apple silicon, downloads the latest release):
 
 ```bash
-git clone https://github.com/andrew-bierman/fantasma && cd fantasma
-scripts/install.sh        # build + install to ~/Applications + launch
+curl -fsSL https://raw.githubusercontent.com/andrew-bierman/fantasma/main/install.sh | sh
 ```
 
-Or Homebrew (Apple silicon, unnotarized build — trust-the-cask flow):
+Homebrew:
 
 ```bash
 brew tap andrew-bierman/tap
 brew install --cask andrew-bierman/tap/fantasma
 ```
 
-The first resolve downloads a ≈161 MB `GhosttyKit.xcframework`; later builds
-are quick and cached.
+The build is unnotarized — on first launch, right-click Fantasma.app → Open,
+or run `xattr -dr com.apple.quarantine ~/Applications/Fantasma.app`.
 
-Requires macOS 14+, Swift tools 6.2 (Xcode 26+ toolchain).
+From source:
 
-## Using it
+```bash
+git clone https://github.com/andrew-bierman/fantasma && cd fantasma
+scripts/install.sh        # build + install to ~/Applications + link the CLI
+```
 
-**Float (quick-launch):** `open -a Fantasma` (or `open /path/to/Fantasma.app`)
-shows the overlay, focused and typing-ready. Running the same command again
-hides it; once hidden, it shows again — bind that toggle to a hotkey launcher
-(Tinycast command: `open -a Fantasma`). Click away or Cmd+W and the overlay
-hides. Cmd+Q quits the app.
+Requires macOS 14+, Swift tools 6.2 (Xcode 26+ toolchain). The first build
+downloads a ≈161 MB `GhosttyKit.xcframework`; later builds are cached.
 
-**Normal windows:** `Fantasma.app/Contents/MacOS/Fantasma --new-window`
-(requires Fantasma to be running) opens a normal titled terminal window that
-your tiling manager treats like any other app. Cmd+W or the close button
-closes that window and ends its shell.
+## Usage
 
-**Window manipulation:** drag the outer 8px edges or corners to resize
-(minimum 320×180); hold **Cmd and drag anywhere** to move the overlay.
+**Float** — `fantasma +toggle-float` (or `open -a Fantasma`) summons the
+overlay focused and typing-ready. Running the same command again hides it.
+Clicking away or Cmd+W hides it. With the default config, dismissing ends the
+shell and every summon is fresh; set `clear_on_open = false` to keep the
+shell across hide/show.
 
-**Shell lifecycle:** with the default config, dismissing the float ends its
-shell — every summon is fresh. Exiting a shell always ends its window
-(overlay quit / normal window close).
+**Tiled windows** — `fantasma +new-window` opens a normal titled window that
+your tiling manager manages like any other app. Cmd+W closes it.
+
+**CLI** — the binary doubles as a Ghostty-style action CLI:
+
+```bash
+fantasma +toggle-float      # summon/dismiss the overlay
+fantasma +new-window        # open a tiled window
+fantasma +show-config       # print the resolved configuration
+fantasma +list-themes       # list bundled theme names
+fantasma +reload-config     # re-read the config file
+```
+
+**Keys**: Cmd+W dismisses (float) or closes (tiled) · Cmd+Q quits ·
+Cmd+drag moves the float · drag the 8px edges to resize · ⌘, opens the
+config.
 
 ## Configuration
 
 `~/.config/fantasma/fantasma.conf` — `key = value` lines, `#` comments,
-unknown keys ignored, read once at launch. Fantasma also reads your
-existing Ghostty config (`~/.config/ghostty/config`) and applies the
-recognized keys (`theme`, `font-size`, `window-padding-x`, `copy-on-select`,
-`font-family`) — fantasma.conf values override Ghostty's.
+unknown keys ignored, read at launch. Fantasma also imports recognized keys
+from your existing Ghostty config (`~/.config/ghostty/config`): `theme`,
+`font-size`, `window-padding-x`, `copy-on-select`, `font-family`. fantasma.conf
+values win.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `theme` | `Dracula` | Any theme name from the bundled iTerm2 catalog; unknown names fall back to the package default |
+| `theme` | `Dracula` | Theme name; unknown names fall back to the engine default |
 | `font_size` | `13` | Terminal font size (integer ≥ 1) |
 | `font_family` | *(engine default)* | Monospace family name |
 | `padding` | `8` | Window padding in points (integer ≥ 0) |
-| `clear_on_open` | `true` | `true`: dismissing the float ends its shell; `false`: the shell survives hide/show with full scrollback |
+| `clear_on_open` | `true` | `true`: dismissing the float ends its shell; `false`: the shell survives hide/show |
 | `copy_on_select` | `true` | Copy selections to the clipboard as you make them |
-| `float_width` / `float_height` | `960` / `620` | Float size in points (clamped to the screen) |
+| `float_width` / `float_height` | `720` / `480` | Float size in points (clamped to the screen) |
 | `float_x` / `float_y` | *(centered, 110pt from top)* | Float position in points from the screen's top-left |
-| `normal_title_bar` | `true` | `false` hides the normal windows' title bar (full-size content, traffic lights stay) |
+| `normal_title_bar` | `true` | `false` hides tiled windows' title bar |
 
-Example:
-
-```ini
-theme = GruvboxDark
-font_size = 14
-padding = 12
-clear_on_open = false
-float_width = 800
-float_height = 500
-float_x = 200
-float_y = 100
-```
+Quoted values (`theme = "Catppuccin Mocha"`) are supported. Changes apply on
+relaunch, or run `fantasma +reload-config`.
 
 ## yabai
 
-Exempt only the float from tiling, by title (normal windows stay tiled):
+Exempt only the float from tiling, by title (tiled windows stay managed):
 
 ```bash
 yabai -m rule --add app="^Fantasma$" title="^fantasma-float$" manage=off
 ```
 
-## Tests and smoke
+## Extras
+
+`extras/fantasmasay "boo. terminals should float."` — the mascot ghost says
+your words (ASCII generated from the app icon; requires `cowsay`).
+
+## Development
 
 ```bash
-swift test              # config parser, geometry, window-math unit tests
-scripts/smoke.sh        # AX-driven end-to-end float loop (needs Accessibility
-                        # permission for the driving terminal)
+swift build -c release    # build
+swift test                # unit tests
+scripts/smoke.sh          # end-to-end AX loop (needs Accessibility permission)
+scripts/release.sh        # cut a release from main (bump VERSION first)
 ```
 
-## Name
-
-Provisional. "Fantasma" (ghost) fits the summon-vanish overlay; "moot" was
-the runner-up. A rename touches the bundle id constants in
-`scripts/build-app.sh`, the app name, and the yabai rule.
+Every PR that changes code must bump `VERSION` — a GitHub Action enforces it.
+Releases are cut only from `main`, and tags are immutable.
 
 ## License
 
