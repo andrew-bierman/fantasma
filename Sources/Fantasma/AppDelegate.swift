@@ -19,7 +19,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // immediately (KTD3).
         NSApp.setActivationPolicy(.accessory)
 
-        let frame = OverlayGeometry.frame(for: NSScreen.main?.visibleFrame ?? .zero)
+        let frame = OverlayGeometry.frame(
+            for: NSScreen.main?.visibleFrame ?? .zero,
+            config: config
+        )
         let window = OverlayWindow(
             contentRect: frame,
             styleMask: [.borderless, .resizable],
@@ -83,12 +86,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return event
         }
 
-        // Windowed-mode trigger: the binary invoked with --new-window posts
-        // this notification and exits (KTD16).
         DistributedNotificationCenter.default.addObserver(
             self,
             selector: #selector(newWindowRequested(_:)),
-            name: Notification.Name("com.andrewbierman.fantasma.new-window"),
+            name: .fantasmaNewWindow,
             object: nil
         )
 
@@ -101,11 +102,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyMonitor = nil
         surface?.teardown()
         surface = nil
-        for controller in normalWindows {
+        // Snapshot + clear before closing: close() mutates normalWindows
+        // through onClosed, and mutating during enumeration traps.
+        let closing = normalWindows
+        normalWindows.removeAll()
+        for controller in closing {
             controller.window.delegate = nil
             controller.close()
         }
-        normalWindows.removeAll()
     }
 
     @objc private func windowDidResize(_ notification: Notification) {
@@ -121,7 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openNormalWindow()
     }
 
-    func openNormalWindow() {
+    private func openNormalWindow() {
         let controller = NormalWindowController(config: config)
         controller.onClosed = { [weak self] finished in
             self?.normalWindows.removeAll { $0 === finished }
@@ -149,7 +153,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Surface lifecycle
 
-    /// Builds a configured surface and installs it as the window's content.
     private func attachSurface(to window: NSWindow, frame: NSRect) {
         let surface = TerminalSurface(frame: frame, config: config)
         surface.onShellExit = { [weak self] in
@@ -195,8 +198,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func show() {
         guard let window else { return }
         ignoresFocusLoss = true
-        // clear_on_open: dismissal tore the shell down, so every summon is a
-        // fresh session (R17). Without it the same surface returns (v1).
         if surface == nil {
             attachSurface(
                 to: window,
@@ -226,13 +227,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func hide() {
-        guard let window else { return }
+        guard let window, window.isVisible else { return }
         window.orderOut(nil)
         // clear_on_open (R17): the shell dies here by design; the surface's
         // expected-teardown state keeps this off the quit path (KTD14).
         if config.clearOnOpen {
             surface?.teardown()
             surface = nil
+            // Release the dead Metal view tree instead of retaining it as
+            // invisible contentView content between summons.
+            window.contentView = nil
         }
     }
 }

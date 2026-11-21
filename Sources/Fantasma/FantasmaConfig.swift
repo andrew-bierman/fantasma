@@ -1,63 +1,144 @@
 import Foundation
 
-/// Resolved user configuration with plan defaults (R16): theme name,
-/// font size, window padding, and whether dismissing the float discards
-/// the shell (KD6: cleared by default).
+/// Resolved user configuration. Values merge from three layers, lowest to
+/// highest: built-in defaults, the user's existing Ghostty config
+/// (`~/.config/ghostty/config`, recognized keys only), and Fantasma's own
+/// `~/.config/fantasma/fantasma.conf` (explicit overrides).
 struct FantasmaConfig: Equatable {
     var theme = "Dracula"
     var fontSize = 13
     var padding = 8
     var clearOnOpen = true
+    var copyOnSelect = true
+    var fontFamily: String? = nil
+    var floatWidth: Int? = nil
+    var floatHeight: Int? = nil
+    var floatX: Int? = nil
+    var floatY: Int? = nil
+    var normalTitleBar = true
 }
 
 enum FantasmaConfigLoader {
     static let defaultPath = "~/.config/fantasma/fantasma.conf"
+    static let ghosttyPath = "~/.config/ghostty/config"
 
-    static func load(path: String? = nil) -> FantasmaConfig {
-        let resolved = path ?? (defaultPath as NSString).expandingTildeInPath
-        guard let text = try? String(contentsOfFile: resolved, encoding: .utf8) else {
-            return FantasmaConfig()
-        }
-        return parse(text)
+    static func load(path: String? = nil, ghosttyPath: String? = nil) -> FantasmaConfig {
+        var values: [String: String] = [:]
+        merge_ghostty(into: &values, path: ghosttyPath)
+        merge_fantasma(into: &values, path: path)
+        return resolve(values)
     }
 
-    static func parse(_ text: String) -> FantasmaConfig {
-        var config = FantasmaConfig()
+    // MARK: - Layers
+
+    private static func merge_fantasma(into values: inout [String: String], path: String?) {
+        if let text = try? String(contentsOfFile: path ?? defaultPath, encoding: .utf8) {
+            mergeLines(text, into: &values)
+        }
+    }
+
+    private static func merge_ghostty(into values: inout [String: String], path: String?) {
+        let resolved = (path ?? ghosttyPath) as NSString
+        guard let text = try? String(contentsOfFile: resolved as String, encoding: .utf8) else { return }
+        var ghosttyValues: [String: String] = [:]
+        mergeLines(text, into: &ghosttyValues)
+        // Map recognized Ghostty keys onto Fantasma's names; unrecognized
+        // directives are dropped.
+        let keyMap = [
+            "theme": "theme",
+            "font_size": "font_size",
+            "window_padding_x": "padding",
+            "window_padding_y": "padding",
+            "copy_on_select": "copy_on_select",
+            "font_family": "font_family",
+        ]
+        for (ghosttyKey, value) in ghosttyValues {
+            if let fantasmaKey = keyMap[ghosttyKey] {
+                values[fantasmaKey] = value
+            }
+        }
+    }
+
+    /// Parses `key = value` lines, skipping blanks and `#` comments. Ghostty
+    /// directives that take no value or multi-token values we don't model
+    /// still parse as strings; unknown keys are dropped at resolve time.
+    private static func mergeLines(_ text: String, into values: inout [String: String]) {
         for rawLine in text.split(separator: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             guard !line.isEmpty, !line.hasPrefix("#"), let separator = line.firstIndex(of: "=") else {
                 continue
             }
-            let key = line[..<separator].trimmingCharacters(in: .whitespaces)
+            let key = keyNormalize(line[..<separator].trimmingCharacters(in: .whitespaces))
             let value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespaces)
-            switch key {
-            case "theme":
-                config.theme = value
-            case "font_size":
-                if let size = Int(value), size >= 1 {
-                    config.fontSize = size
-                }
-            case "padding":
-                if let padding = Int(value), padding >= 0 {
-                    config.padding = padding
-                }
-            case "clear_on_open":
-                config.clearOnOpen = parseBool(value, fallback: config.clearOnOpen)
-            default:
-                continue
-            }
+            guard !key.isEmpty, !value.isEmpty else { continue }
+            values[key] = value
+        }
+    }
+
+    /// Fantasma keys are already snake_case; Ghostty keys are dash-case and
+    /// may carry spaces in values. Normalizes both so a Ghostty `font-size`
+    /// and a Fantasma `font_size` resolve identically.
+    private static func keyNormalize(_ key: String) -> String {
+        key.lowercased().replacingOccurrences(of: "-", with: "_")
+    }
+
+    /// Exposed for tests: the ghostty→fantasma key normalization.
+    static func parse_key(_ key: String) -> String {
+        keyNormalize(key)
+    }
+
+    // MARK: - Resolution
+
+    private static func resolve(_ values: [String: String]) -> FantasmaConfig {
+        var config = FantasmaConfig()
+        if let theme = values["theme"] { config.theme = theme }
+        if let size = positiveInt(values["font_size"], minimum: 1) {
+            config.fontSize = size
+        }
+        if let padding = nonNegativeInt(values["padding"]) {
+            config.padding = padding
+        }
+        if let clear = bool(values["clear_on_open"]) {
+            config.clearOnOpen = clear
+        }
+        if let copy = bool(values["copy_on_select"]) {
+            config.copyOnSelect = copy
+        }
+        if let family = values["font_family"], !family.isEmpty {
+            config.fontFamily = family
+        }
+        if let width = positiveInt(values["float_width"], minimum: 200) {
+            config.floatWidth = width
+        }
+        if let height = positiveInt(values["float_height"], minimum: 150) {
+            config.floatHeight = height
+        }
+        if let x = values["float_x"].flatMap(Int.init) { config.floatX = x }
+        if let y = values["float_y"].flatMap(Int.init) { config.floatY = y }
+        if let titleBar = bool(values["normal_title_bar"]) {
+            config.normalTitleBar = titleBar
         }
         return config
     }
 
-    private static func parseBool(_ value: String, fallback: Bool) -> Bool {
-        switch value.lowercased() {
+    private static func bool(_ value: String?) -> Bool? {
+        switch value?.lowercased() {
         case "true", "yes", "1":
             return true
         case "false", "no", "0":
             return false
         default:
-            return fallback
+            return nil
         }
+    }
+
+    private static func positiveInt(_ value: String?, minimum: Int) -> Int? {
+        guard let number = value.flatMap(Int.init), number >= minimum else { return nil }
+        return number
+    }
+
+    private static func nonNegativeInt(_ value: String?) -> Int? {
+        guard let number = value.flatMap(Int.init), number >= 0 else { return nil }
+        return number
     }
 }

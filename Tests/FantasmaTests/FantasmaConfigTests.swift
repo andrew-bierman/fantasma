@@ -2,63 +2,127 @@ import XCTest
 @testable import Fantasma
 
 final class FantasmaConfigTests: XCTestCase {
-    func testFullFileParsesAllKeys() {
-        let text = """
+    private func writeTemp(_ text: String) -> String {
+        let path = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("fantasma-test-\(UUID().uuidString).conf")
+        try? text.write(toFile: path, atomically: true, encoding: .utf8)
+        return path
+    }
+
+    func testDefaultsMatchPlan() {
+        XCTAssertEqual(FantasmaConfig(), FantasmaConfig(
+            theme: "Dracula",
+            fontSize: 13,
+            padding: 8,
+            clearOnOpen: true,
+            copyOnSelect: true,
+            fontFamily: nil,
+            floatWidth: nil,
+            floatHeight: nil,
+            floatX: nil,
+            floatY: nil,
+            normalTitleBar: true
+        ))
+    }
+
+    func testMissingFilesYieldDefaults() {
+        XCTAssertEqual(
+            FantasmaConfigLoader.load(path: "/tmp/does-not-exist-fantasma.conf"),
+            FantasmaConfig()
+        )
+    }
+
+    func testFantasmaKeysParse() {
+        let path = writeTemp("""
         # fantasma config
         theme = GruvboxDark
         font_size = 15
         padding = 12
         clear_on_open = false
-        """
-        let config = FantasmaConfigLoader.parse(text)
+        float_width = 800
+        float_height = 500
+        float_x = 100
+        float_y = 50
+        normal_title_bar = false
+        copy_on_select = false
+        font_family = JetBrains Mono
+        """)
+        let config = FantasmaConfigLoader.load(path: path)
         XCTAssertEqual(config.theme, "GruvboxDark")
         XCTAssertEqual(config.fontSize, 15)
         XCTAssertEqual(config.padding, 12)
         XCTAssertEqual(config.clearOnOpen, false)
+        XCTAssertEqual(config.copyOnSelect, false)
+        XCTAssertEqual(config.fontFamily, "JetBrains Mono")
+        XCTAssertEqual(config.floatWidth, 800)
+        XCTAssertEqual(config.floatHeight, 500)
+        XCTAssertEqual(config.floatX, 100)
+        XCTAssertEqual(config.floatY, 50)
+        XCTAssertEqual(config.normalTitleBar, false)
     }
 
-    func testMissingFileYieldsDefaults() {
-        let config = FantasmaConfigLoader.load(path: "/tmp/does-not-exist-fantasma.conf")
-        XCTAssertEqual(config, FantasmaConfig())
+    func testGhosttyKeysApplyWhenNoFantasmaOverrides() {
+        let ghostty = writeTemp("""
+        theme = Catppuccin Mocha
+        font-size = 16
+        window-padding-x = 10
+        copy-on-select = false
+        cursor-style = bar
+        """)
+
+        let config = FantasmaConfigLoader.load(
+            path: "/tmp/does-not-exist-fantasma.conf",
+            ghosttyPath: ghostty
+        )
+        XCTAssertEqual(config.theme, "Catppuccin Mocha")
+        XCTAssertEqual(config.fontSize, 16)
+        XCTAssertEqual(config.padding, 10)
+        XCTAssertEqual(config.copyOnSelect, false)
     }
 
-    func testDefaultsMatchPlan() {
-        let config = FantasmaConfig()
+    func testFantasmaOverridesGhostty() {
+        let ghostty = writeTemp("""
+        theme = Catppuccin Mocha
+        font-size = 16
+        """)
+        let fantasma = writeTemp("theme = Dracula")
+
+        let config = FantasmaConfigLoader.load(path: fantasma, ghosttyPath: ghostty)
         XCTAssertEqual(config.theme, "Dracula")
-        XCTAssertEqual(config.fontSize, 13)
-        XCTAssertEqual(config.padding, 8)
-        XCTAssertEqual(config.clearOnOpen, true)
+        XCTAssertEqual(config.fontSize, 16)
     }
 
-    func testUnknownKeysCommentsAndWhitespaceIgnored() {
-        let text = """
+    func testGhosttyDashKeysNormalizeToSnake() {
+        XCTAssertEqual(FantasmaConfigLoader.parse_key("font-size"), "font_size")
+        XCTAssertEqual(FantasmaConfigLoader.parse_key("WINDOW-PADDING-X"), "window_padding_x")
+    }
+
+    func testUnknownKeysAndCommentsIgnored() {
+        let path = writeTemp("""
         # comment
-        unknown_key = whatever
+        unknown_directive = whatever
+        cursor-style = bar
 
           theme   =  SolarizedDark
-        tabs = true
-        """
-        let config = FantasmaConfigLoader.parse(text)
+        """)
+        let config = FantasmaConfigLoader.load(path: path)
         XCTAssertEqual(config.theme, "SolarizedDark")
         XCTAssertEqual(config.fontSize, 13)
-        XCTAssertEqual(config.clearOnOpen, true)
     }
 
-    func testClearOnOpenParsesCaseInsensitiveBooleans() {
-        XCTAssertEqual(FantasmaConfigLoader.parse("clear_on_open = FALSE").clearOnOpen, false)
-        XCTAssertEqual(FantasmaConfigLoader.parse("clear_on_open = True").clearOnOpen, true)
-    }
-
-    func testInvalidNumbersFallBackToDefaults() {
-        let config = FantasmaConfigLoader.parse("font_size = big\npadding = -3\nfont_size = 0")
-        XCTAssertEqual(config.fontSize, 13)   // non-numeric and zero fall back
-        XCTAssertEqual(config.padding, 8)     // negative falls back
-    }
-
-    func testLoaderExpandsTildeAndReadsRealFile() throws {
-        let dir = NSTemporaryDirectory()
-        let path = (dir as NSString).appendingPathComponent("fantasma-test-\(UUID().uuidString).conf")
-        try "theme = Nord".write(toFile: path, atomically: true, encoding: .utf8)
-        XCTAssertEqual(FantasmaConfigLoader.load(path: path).theme, "Nord")
+    func testBoolAndNumberValidation() {
+        let path = writeTemp("""
+        clear_on_open = FALSE
+        copy_on_select = yes
+        font_size = 0
+        padding = -3
+        float_width = 0
+        """)
+        let config = FantasmaConfigLoader.load(path: path)
+        XCTAssertEqual(config.clearOnOpen, false)
+        XCTAssertEqual(config.copyOnSelect, true)
+        XCTAssertEqual(config.fontSize, 13)
+        XCTAssertEqual(config.padding, 8)
+        XCTAssertEqual(config.floatWidth, nil)
     }
 }

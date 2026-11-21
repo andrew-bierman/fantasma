@@ -6,12 +6,9 @@ import AppKit
 MainActor.assumeIsolated {
     let arguments = CommandLine.arguments
 
-    // Windowed-mode trigger (KTD16): announce a new normal window to the
-    // running instance and exit. With no instance running this posts to
-    // nothing and exits quietly.
     if arguments.contains("--new-window") {
         DistributedNotificationCenter.default().post(
-            name: Notification.Name("com.andrewbierman.fantasma.new-window"),
+            name: .fantasmaNewWindow,
             object: nil
         )
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
