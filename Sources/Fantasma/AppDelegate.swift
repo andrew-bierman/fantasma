@@ -121,6 +121,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hide()
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        // Cmd-Tab back to a hidden Fantasma must re-summon the float —
+        // activation alone leaves the app active with no visible window
+        // and dead input. Ignore activation during our own hide path.
+        guard !pinned, !isQuitting, let window, !window.isVisible else { return }
+        show()
+    }
+
     @objc private func newWindowRequested(_ notification: Notification) {
         openNormalWindow()
     }
