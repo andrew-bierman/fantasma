@@ -56,6 +56,7 @@ enum FantasmaCLI {
         if let height = config.floatHeight { lines.append("float_height = \(height)") }
         if let x = config.floatX { lines.append("float_x = \(x)") }
         if let y = config.floatY { lines.append("float_y = \(y)") }
+        if !config.hotkey.isEmpty { lines.append("hotkey = \(config.hotkey)") }
         print(lines.joined(separator: "\n"))
     }
 
