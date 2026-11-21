@@ -73,6 +73,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.function) == .command
             else { return event }
             if event.window === self?.window {
+                // Zoom keys first (⌘=/⌘+/⌘−/⌘0); they never collide with
+                // the window commands below.
+                if let direction = FontZoom.Direction(matching: event.charactersIgnoringModifiers) {
+                    self?.surface?.applyFontZoom(direction)
+                    return nil
+                }
                 switch event.charactersIgnoringModifiers {
                 case "w":
                     self?.hide()
@@ -85,6 +91,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             if let normal = self?.normalWindows.first(where: { $0.window === event.window }) {
+                if let direction = FontZoom.Direction(matching: event.charactersIgnoringModifiers) {
+                    normal.applyFontZoom(direction)
+                    return nil
+                }
                 switch event.charactersIgnoringModifiers {
                 case "w":
                     normal.close()
