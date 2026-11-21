@@ -33,9 +33,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for: visibleFrame,
             // Precedence (see FloatFrameState): config wins over the
             // persisted frame, the persisted frame wins over defaults.
+            // remember_frame = false skips the state file entirely (KTD2).
             config: FloatFrameState.merged(
                 into: config,
-                state: FloatFrameState.load(path: FloatFrameState.defaultPath()),
+                state: config.rememberFrame
+                    ? FloatFrameState.load(path: FloatFrameState.defaultPath())
+                    : nil,
                 visibleFrame: visibleFrame
             )
         )
@@ -320,6 +323,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let previous = config
         config = FantasmaConfigLoader.load()
         guard config != previous else { return }
+        // A hotkey edit rebinds live, before the clear_on_open and
+        // surfaceChanged guards below: those return for unrelated changes
+        // and would leave a new binding dead until restart (R1, R3).
+        if HotkeyParser.changed(previous: previous.hotkey, current: config.hotkey) {
+            unregisterGlobalHotkey()
+            registerGlobalHotkey()
+            fantasmaLog("hotkey rebound: \"\(previous.hotkey)\" → \"\(config.hotkey)\"")
+        }
         // Hard rule: live shells survive a reload. New windows already read
         // `config` at creation, so every future surface picks up the new
         // values with no further work. The one safe in-place refresh is the
@@ -468,7 +479,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// file. Called on hide, live-resize end, and quit; a failed write is
     /// logged, never fatal.
     private func persistFloatFrame() {
-        guard let window else { return }
+        guard config.rememberFrame, let window else { return }
         let visibleFrame = window.screen?.visibleFrame
             ?? NSScreen.main?.visibleFrame
             ?? window.frame

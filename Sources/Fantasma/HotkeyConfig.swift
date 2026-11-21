@@ -105,4 +105,12 @@ enum HotkeyParser {
     private static func keyCode(for token: String) -> UInt32? {
         keyCodes[token].map(UInt32.init)
     }
+
+    /// Whether a config reload must rebind the global hotkey. Pure string
+    /// comparison on the raw values: any difference — enabling, disabling,
+    /// or switching combos — means the registered Carbon hotkey no longer
+    /// matches the config.
+    static func changed(previous: String, current: String) -> Bool {
+        previous != current
+    }
 }

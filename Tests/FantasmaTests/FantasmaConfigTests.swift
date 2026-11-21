@@ -135,6 +135,20 @@ final class FantasmaConfigTests: XCTestCase {
         XCTAssertEqual(garbage.linkUrl, true)
     }
 
+    func testRememberFrameParses() {
+        // Absent → persistence stays on for existing installs (R5).
+        XCTAssertEqual(FantasmaConfig().rememberFrame, true)
+        // Explicit off: the float ignores state.toml entirely (R4).
+        let off = FantasmaConfigLoader.load(path: writeTemp("remember_frame = false"))
+        XCTAssertEqual(off.rememberFrame, false)
+        // Quoted values follow the config-wide quoting rule.
+        let quoted = FantasmaConfigLoader.load(path: writeTemp("remember_frame = \"false\""))
+        XCTAssertEqual(quoted.rememberFrame, false)
+        // Unparseable values keep the default rather than silently disabling.
+        let garbage = FantasmaConfigLoader.load(path: writeTemp("remember_frame = sometimes"))
+        XCTAssertEqual(garbage.rememberFrame, true)
+    }
+
     func testUnknownKeysAndCommentsIgnored() {
         let path = writeTemp("""
         # comment

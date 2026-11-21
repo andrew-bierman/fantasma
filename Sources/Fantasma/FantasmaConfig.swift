@@ -22,6 +22,9 @@ struct FantasmaConfig: Equatable {
     var themeLight: String? = nil
     var themeDark: String? = nil
     var linkUrl = true
+    /// When false, the float ignores the persisted frame state file on
+    /// launch and skips writing it — placement comes from config/defaults.
+    var rememberFrame = true
 }
 
 enum FantasmaConfigLoader {
@@ -169,6 +172,9 @@ enum FantasmaConfigLoader {
         }
         if let link = bool(values["link_url"]) {
             config.linkUrl = link
+        }
+        if let remember = bool(values["remember_frame"]) {
+            config.rememberFrame = remember
         }
         return config
     }

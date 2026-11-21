@@ -7,6 +7,27 @@ final class HotkeyConfigTests: XCTestCase {
         HotkeyParser.parse(raw)
     }
 
+    private func changed(_ previous: String, _ current: String) -> Bool {
+        HotkeyParser.changed(previous: previous, current: current)
+    }
+
+    func testChangedIsFalseWhenBindingUnchanged() {
+        // Equal non-empty bindings: an unrelated config reload must not
+        // unregister/re-register the hotkey (R3).
+        XCTAssertFalse(changed("cmd+grave", "cmd+grave"))
+        // Two empties: still disabled, still no work (R3).
+        XCTAssertFalse(changed("", ""))
+    }
+
+    func testChangedIsTrueWhenBindingChanges() {
+        // Enable from off (R1).
+        XCTAssertTrue(changed("", "cmd+grave"))
+        // Disable to off (R2).
+        XCTAssertTrue(changed("cmd+grave", ""))
+        // Rebind between two live combos (R1).
+        XCTAssertTrue(changed("cmd+grave", "ctrl+space"))
+    }
+
     func testEmptyAndWhitespaceAreDisabled() {
         XCTAssertEqual(parse(""), .disabled)
         XCTAssertEqual(parse("   "), .disabled)
