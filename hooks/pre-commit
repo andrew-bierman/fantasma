@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Refuse commits straight on main — all work lands via PR (repo policy).
+BRANCH="$(git branch --show-current)"
+if [ "$BRANCH" = "main" ]; then
+  echo "✖ commits on main are forbidden — branch first (git checkout -b feat/...), then PR." >&2
+  exit 1
+fi
