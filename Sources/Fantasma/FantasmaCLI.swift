@@ -1,4 +1,5 @@
 import AppKit
+import GhosttyTerminal
 import GhosttyTheme
 
 /// The binary doubles as a CLI (mirroring Ghostty's `+action` convention):
@@ -7,7 +8,7 @@ import GhosttyTheme
 /// to the running instance, or handled locally and printed when no instance
 /// is needed.
 enum FantasmaCLI {
-    static let actions = ["+new-window", "+toggle-float", "+show-config", "+list-themes", "+reload-config"]
+    static let actions = ["+new-window", "+toggle-float", "+show-config", "+list-themes", "+reload-config", "+verify-bundle"]
 
     /// Returns true when the arguments name a CLI action (caller should not
     /// continue into the app).
@@ -26,10 +27,35 @@ enum FantasmaCLI {
             printShowConfig()
         case "+list-themes":
             printThemes()
+        case "+verify-bundle":
+            MainActor.assumeIsolated { verifyBundle() }
         default:
             break
         }
         return true
+    }
+
+    @MainActor
+    private static func verifyBundle() {
+        let bundle = Bundle.main
+        guard bundle.bundleURL.pathExtension == "app", let resources = bundle.resourceURL else {
+            failBundleCheck("Run this check from the executable inside Fantasma.app.")
+        }
+
+        // Exercise the same Ghostty initialization as the first terminal window.
+        _ = TerminalController(configSource: .none)
+        let resourcePath = resources.resolvingSymlinksInPath().path + "/"
+        for directory in [GhosttyRuntimeResources.directoryURL, GhosttyRuntimeResources.terminfoDirectoryURL] {
+            guard let directory, directory.resolvingSymlinksInPath().path.hasPrefix(resourcePath) else {
+                failBundleCheck("Ghostty resources must resolve inside the app bundle.")
+            }
+        }
+        print("Ghostty initialized using packaged resources.")
+    }
+
+    private static func failBundleCheck(_ message: String) -> Never {
+        FileHandle.standardError.write(Data((message + "\n").utf8))
+        exit(1)
     }
 
     private static func post(_ name: Notification.Name) {
