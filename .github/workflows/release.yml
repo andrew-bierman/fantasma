@@ -77,6 +77,18 @@ jobs:
           ditto -c -k --keepParent "$release_dir" "Fantasma-$version-arm64.zip"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Verify the packaged app
+        env:
+          VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          set -euo pipefail
+          extracted="$(mktemp -d "$RUNNER_TEMP/fantasma-package.XXXXXX")"
+          ditto -x -k "Fantasma-$VERSION-arm64.zip" "$extracted"
+          app="$extracted/Fantasma-$VERSION/Fantasma.app"
+          codesign --verify --deep --strict "$app"
+          xcrun stapler validate "$app"
+          "$app/Contents/MacOS/Fantasma" +verify-bundle
+
       - name: Upload signed ZIP
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:

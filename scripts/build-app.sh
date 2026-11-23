@@ -8,8 +8,9 @@ APP="$ROOT/$APP_NAME.app"
 VERSION="$(cat "$ROOT/VERSION" 2>/dev/null | tr -d '[:space:]')"
 VERSION="${VERSION:-0.0.0}"
 
-swift build -c release
-RELEASE_DIR="$(swift build -c release --show-bin-path)"
+# Swift Build generates a resource accessor that searches Contents/Resources.
+swift build --build-system swiftbuild -c release
+RELEASE_DIR="$(swift build --build-system swiftbuild -c release --show-bin-path)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -64,5 +65,6 @@ PLIST
 # Ad-hoc signature so the app launches locally; a real Developer ID signature
 # (needed for notarization) is applied by scripts/notarize.sh.
 codesign --force --deep --sign - "$APP" 2>/dev/null || true
+"$APP/Contents/MacOS/$APP_NAME" +verify-bundle
 
 echo "Built $APP"
