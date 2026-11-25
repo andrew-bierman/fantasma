@@ -54,6 +54,12 @@ and size across summons and relaunches. With `clear_on_open = true`
 (default) every summon starts a fresh shell, and that shell starts in the
 working directory of your last Fantasma shell (OSC 7).
 
+The Fantasma menu bar icon is available in floating mode. It opens the
+configuration file through **Settings…**, shows or hides the float, opens a
+tiled window, and offers a manual **Check for Updates…** action. Update checks
+run only when selected and compare the installed version with the latest
+GitHub release.
+
 **Tiled windows** — `fantasma +new-window` opens a normal titled window that
 your tiling manager manages like any other app. ⌘W closes it. Both window
 kinds spawn in the last-used directory and switch theme live with system
