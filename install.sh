@@ -43,9 +43,7 @@ done
 
 mkdir -p "$DEST"
 rm -rf "$DEST/Fantasma.app"
-cp -R "$APP_SRC" "$DEST/Fantasma.app"
-rm -rf "$DEST/Fantasma.app/Contents/Resources/GhosttyKit_GhosttyTerminal.bundle/_CodeSignature" 2>/dev/null || true
-xattr -dr com.apple.quarantine "$DEST/Fantasma.app" 2>/dev/null || true
+cp -pRP "$APP_SRC" "$DEST/Fantasma.app"
 
 mkdir -p "${HOME}/.local/bin"
 ln -sf "$DEST/Fantasma.app/Contents/MacOS/Fantasma" "${HOME}/.local/bin/fantasma"

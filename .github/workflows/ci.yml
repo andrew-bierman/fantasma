@@ -21,6 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Release installer regression
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: python3 scripts/test-release-install.py
+
       - name: Cache SwiftPM + XCFramework
         uses: actions/cache@v4
         with:
