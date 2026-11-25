@@ -183,7 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.window = window
         show()
         installMainMenu()
-        installStatusMenu()
+        syncStatusMenu()
         registerGlobalHotkey()
     }
 
@@ -236,7 +236,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = mainMenu
     }
 
-    private func installStatusMenu() {
+    private func syncStatusMenu() {
+        guard config.menuBarIcon else {
+            if let statusItem {
+                NSStatusBar.system.removeStatusItem(statusItem)
+                self.statusItem = nil
+            }
+            return
+        }
+        guard statusItem == nil else { return }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
             button.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Fantasma")
@@ -403,6 +411,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         config = loaded.config
         guard config != previous else { return }
+        syncStatusMenu()
         rebindHotkeyIfNeeded(previous: previous)
         // Hard rule: live shells survive a reload. New windows already read
         // `config` at creation, so every future surface picks up the new
