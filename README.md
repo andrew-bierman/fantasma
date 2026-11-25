@@ -31,9 +31,7 @@ brew tap andrew-bierman/tap
 brew install --cask andrew-bierman/tap/fantasma
 ```
 
-Published builds are currently unnotarized — on first launch, right-click
-Fantasma.app → Open, or run
-`xattr -dr com.apple.quarantine ~/Applications/Fantasma.app`.
+The [v0.4.11 release ZIP](https://github.com/andrew-bierman/fantasma/releases/tag/v0.4.11) contains a signed and notarized Apple silicon build. You can also download the ZIP directly, extract `Fantasma.app`, and open it.
 
 From source:
 
