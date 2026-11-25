@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import shutil
 import stat
 import subprocess
 import sys
@@ -48,8 +49,23 @@ def test_release_install(installer):
         stubs.mkdir()
         for name, body in {
             "uname": 'if [ "$#" -eq 0 ]; then echo Darwin; else echo arm64; fi',
-            "python3": 'echo "https://offline.invalid/Fantasma.zip"',
+            "python3": """
+if [ "$1" = - ]; then
+    echo "https://offline.invalid/Fantasma.zip"
+    exit 0
+fi
+if [ "${TEST_FAIL_CLI:-}" = 1 ]; then exit 1; fi
+exec "$TEST_REAL_PYTHON" "$@"
+""",
             "curl": 'cp "$TEST_ARCHIVE" "$4"',
+            "cp": """
+if [ "${TEST_FAIL_COPY:-}" = 1 ] && [ "$1" = -pRP ]; then
+    mkdir -p "$3/Contents"
+    printf 'partial copy\n' > "$3/Contents/partial"
+    exit 1
+fi
+exec "$TEST_REAL_CP" "$@"
+""",
             "open": 'printf "%s\\n" "$@" > "$TEST_LAUNCH"',
             "xattr": 'printf "%s\\n" "$@" > "$TEST_XATTR"',
         }.items():
@@ -63,19 +79,38 @@ def test_release_install(installer):
         (installed / "old-install").touch()
         launch = root / "launch"
         xattr = root / "xattr"
-        subprocess.run(
-            ["bash", str(installer)],
-            check=True,
-            env={
-                **os.environ,
-                "HOME": str(home),
-                "PATH": f"{stubs}:{os.environ['PATH']}",
-                "TMPDIR": str(root),
-                "TEST_ARCHIVE": str(archive),
-                "TEST_LAUNCH": str(launch),
-                "TEST_XATTR": str(xattr),
-            },
-        )
+        cli = home / ".local/bin/fantasma"
+        cli.parent.mkdir(parents=True)
+        cli.symlink_to("previous-cli")
+        previous = snapshot(installed)
+        command = ["bash", str(installer)]
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "PATH": f"{stubs}:{os.environ['PATH']}",
+            "TMPDIR": str(root),
+            "TEST_ARCHIVE": str(archive),
+            "TEST_LAUNCH": str(launch),
+            "TEST_XATTR": str(xattr),
+            "TEST_REAL_CP": shutil.which("cp"),
+            "TEST_REAL_PYTHON": sys.executable,
+        }
+        for failure, message in (
+            ("TEST_FAIL_COPY", "could not stage Fantasma.app"),
+            ("TEST_FAIL_CLI", "could not replace CLI link"),
+        ):
+            failed = subprocess.run(
+                command, env={**env, failure: "1"}, capture_output=True, text=True
+            )
+            assert failed.returncode != 0, f"Installer succeeded despite {failure}"
+            assert installed.is_dir() and snapshot(installed) == previous, "Old app was changed"
+            assert os.readlink(cli) == "previous-cli", "Old CLI link was changed"
+            assert not launch.exists(), f"Installer launched despite {failure}"
+            assert f"fantasma install failed: {message}" in failed.stderr
+            assert not list(installed.parent.glob(".fantasma-install.*"))
+            assert not list(cli.parent.glob(".fantasma-install.*"))
+
+        subprocess.run(command, env=env, check=True)
 
         expected = snapshot(app)
         actual = snapshot(installed)
@@ -85,7 +120,6 @@ def test_release_install(installer):
         )
         assert not changed, f"Installed app differs from fixture: {changed}"
         assert not xattr.exists(), "Installer invoked xattr on the app"
-        cli = home / ".local/bin/fantasma"
         assert os.readlink(cli) == str(installed / "Contents/MacOS/Fantasma")
         assert launch.read_text().splitlines() == [str(installed)]
 
