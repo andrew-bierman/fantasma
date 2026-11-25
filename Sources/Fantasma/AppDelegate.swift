@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lsReopenFired = false
     private var finalActivationRetryUsed = false
     private var keyMonitor: Any?
+    private var statusItem: NSStatusItem?
+    private var updateCheckInFlight = false
     private var reopenTimestamp: Date?
     private var isQuitting = false
     private var normalWindows: [NormalWindowController] = []
@@ -112,6 +114,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case "w":
                     self?.hide()
                     return nil
+                case ",":
+                    self?.openSettings(nil)
+                    return nil
                 case "q":
                     NSApp.terminate(nil)
                     return nil
@@ -137,9 +142,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 default:
                     return event
                 }
-            } else if event.window === self?.window, event.charactersIgnoringModifiers == "," {
-                self?.openSettings(nil)
-                return nil
             }
             return event
         }
@@ -181,6 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.window = window
         show()
         installMainMenu()
+        syncStatusMenu()
         registerGlobalHotkey()
     }
 
@@ -198,11 +201,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: ""
         ))
         appMenu.addItem(.separator())
-        appMenu.addItem(NSMenuItem(
-            title: "Settings…",
-            action: #selector(openSettings(_:)),
-            keyEquivalent: ","
-        ))
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings(_:)), keyEquivalent: ",")
+        settingsItem.target = self
+        appMenu.addItem(settingsItem)
+        let updatesItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates(_:)), keyEquivalent: "")
+        updatesItem.target = self
+        appMenu.addItem(updatesItem)
         appMenu.addItem(.separator())
         appMenu.addItem(NSMenuItem(
             title: "Quit Fantasma",
@@ -215,11 +219,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.addItem(windowItem)
         let windowMenu = NSMenu(title: "Window")
         windowItem.submenu = windowMenu
-        windowMenu.addItem(NSMenuItem(
-            title: "New Tiled Window",
-            action: #selector(newWindowRequested(_:)),
-            keyEquivalent: "n"
-        ))
+        let newWindowItem = NSMenuItem(title: "New Tiled Window", action: #selector(newWindowFromMenu(_:)), keyEquivalent: "n")
+        newWindowItem.target = self
+        windowMenu.addItem(newWindowItem)
         windowMenu.addItem(NSMenuItem(
             title: "Close Window",
             action: #selector(NSWindow.performClose(_:)),
@@ -234,9 +236,87 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = mainMenu
     }
 
+    private func syncStatusMenu() {
+        guard config.menuBarIcon else {
+            if let statusItem {
+                NSStatusBar.system.removeStatusItem(statusItem)
+                self.statusItem = nil
+            }
+            return
+        }
+        guard statusItem == nil else { return }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        if let button = item.button {
+            button.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Fantasma")
+            button.image?.isTemplate = true
+            if button.image == nil { button.title = "👻" }
+        }
+        let menu = NSMenu()
+        let toggleItem = NSMenuItem(title: "Show/Hide Float", action: #selector(toggleFloatFromMenu(_:)), keyEquivalent: "")
+        toggleItem.target = self
+        menu.addItem(toggleItem)
+        let newWindowItem = NSMenuItem(title: "New Tiled Window", action: #selector(newWindowFromMenu(_:)), keyEquivalent: "")
+        newWindowItem.target = self
+        menu.addItem(newWindowItem)
+        menu.addItem(.separator())
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings(_:)), keyEquivalent: "")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+        let updatesItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates(_:)), keyEquivalent: "")
+        updatesItem.target = self
+        menu.addItem(updatesItem)
+        menu.addItem(.separator())
+        let quitItem = NSMenuItem(title: "Quit Fantasma", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        quitItem.target = NSApp
+        menu.addItem(quitItem)
+        item.menu = menu
+        statusItem = item
+    }
+
+    @objc private func toggleFloatFromMenu(_ sender: Any?) {
+        toggle()
+    }
+
+    @objc private func newWindowFromMenu(_ sender: Any?) {
+        openNormalWindow()
+    }
+
     @objc private func openSettings(_ sender: Any?) {
         let path = FantasmaConfigLoader.ensureDefaultFile()
         NSWorkspace.shared.open(URL(fileURLWithPath: path))
+    }
+
+    @objc private func checkForUpdates(_ sender: Any?) {
+        guard !updateCheckInFlight else { return }
+        updateCheckInFlight = true
+        let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+        Task {
+            defer { updateCheckInFlight = false }
+            let alert = NSAlert()
+            do {
+                switch try await UpdateChecker.check(currentVersion: current) {
+                case .available(let version, let url):
+                    alert.messageText = "Fantasma \(version) is available"
+                    alert.informativeText = "You have Fantasma \(current)."
+                    alert.addButton(withTitle: "View Release")
+                    alert.addButton(withTitle: "Later")
+                    NSApp.activate(ignoringOtherApps: true)
+                    if alert.runModal() == .alertFirstButtonReturn {
+                        NSWorkspace.shared.open(url)
+                    }
+                    return
+                case .current:
+                    alert.messageText = "Fantasma is up to date"
+                    alert.informativeText = "You have Fantasma \(current)."
+                }
+            } catch {
+                alert.messageText = "Couldn’t check for updates"
+                alert.informativeText = "Check your connection and try again."
+            }
+            alert.addButton(withTitle: "OK")
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -331,6 +411,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         config = loaded.config
         guard config != previous else { return }
+        syncStatusMenu()
         rebindHotkeyIfNeeded(previous: previous)
         // Hard rule: live shells survive a reload. New windows already read
         // `config` at creation, so every future surface picks up the new

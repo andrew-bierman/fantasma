@@ -145,6 +145,14 @@ final class FantasmaConfigTests: XCTestCase {
         XCTAssertEqual(garbage.rememberFrame, true)
     }
 
+    func testMenuBarIconDefaultsOnAndCanBeDisabled() {
+        XCTAssertTrue(FantasmaConfig().menuBarIcon)
+        let off = FantasmaConfigLoader.load(path: writeTemp("menu_bar_icon = false"))
+        XCTAssertFalse(off.menuBarIcon)
+        let garbage = FantasmaConfigLoader.load(path: writeTemp("menu_bar_icon = sometimes"))
+        XCTAssertTrue(garbage.menuBarIcon)
+    }
+
     func testUnreadablePrimaryConfigSignals() throws {
         // An existing-but-unreadable primary config is a transient failure:
         // the loader reports it instead of silently applying defaults.

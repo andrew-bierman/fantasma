@@ -76,6 +76,7 @@ enum FantasmaCLI {
             "clear_on_open = \(config.clearOnOpen)",
             "copy_on_select = \(config.copyOnSelect)",
             "normal_title_bar = \(config.normalTitleBar)",
+            "menu_bar_icon = \(config.menuBarIcon)",
             "link_url = \(config.linkUrl)",
             "remember_frame = \(config.rememberFrame)",
         ]

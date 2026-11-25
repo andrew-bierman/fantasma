@@ -52,6 +52,13 @@ and size across summons and relaunches. With `clear_on_open = true`
 (default) every summon starts a fresh shell, and that shell starts in the
 working directory of your last Fantasma shell (OSC 7).
 
+The Fantasma menu bar icon is on by default in floating mode. It opens the
+configuration file through **Settings…**, shows or hides the float, opens a
+tiled window, and offers a manual **Check for Updates…** action. Update checks
+run only when selected and compare the installed version with the latest
+GitHub release. Set `menu_bar_icon = false` to hide the icon; ⌘, still opens
+the configuration file from the float.
+
 **Tiled windows** — `fantasma +new-window` opens a normal titled window that
 your tiling manager manages like any other app. ⌘W closes it. Both window
 kinds spawn in the last-used directory and switch theme live with system
@@ -103,6 +110,7 @@ values win.
 | `float_width` / `float_height` | `560` / `360` | Default float size in points (clamped to the screen) |
 | `float_x` / `float_y` | *(centered, 110pt from top)* | Default float position in points from the screen's top-left |
 | `normal_title_bar` | `true` | `false` hides tiled windows' title bar |
+| `menu_bar_icon` | `true` | `false` hides the Fantasma menu bar icon; applies live on `+reload-config` |
 
 Quoted values (`theme = "Catppuccin Mocha"`) are supported. Changes apply on
 relaunch, or run `fantasma +reload-config`. The float's last position and

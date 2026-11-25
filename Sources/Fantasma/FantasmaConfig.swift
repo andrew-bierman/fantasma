@@ -16,6 +16,7 @@ struct FantasmaConfig: Equatable {
     var floatX: Int? = nil
     var floatY: Int? = nil
     var normalTitleBar = true
+    var menuBarIcon = true
     /// Raw `hotkey` binding string, e.g. "cmd+grave". Empty (the default)
     /// disables the global hotkey; the raw value is parsed at registration.
     var hotkey = ""
@@ -48,6 +49,7 @@ enum FantasmaConfigLoader {
             # clear_on_open = true     # false keeps the float's shell alive
             # copy_on_select = true
             # normal_title_bar = true  # false hides normal windows' title bar
+            # menu_bar_icon = true      # false hides Fantasma's menu bar icon
             # float_width = 960
             # float_height = 620
             # float_x = 200            # omitted: centered horizontally
@@ -175,6 +177,9 @@ enum FantasmaConfigLoader {
         if let y = values["float_y"].flatMap(Int.init) { config.floatY = y }
         if let titleBar = bool(values["normal_title_bar"]) {
             config.normalTitleBar = titleBar
+        }
+        if let menuBarIcon = bool(values["menu_bar_icon"]) {
+            config.menuBarIcon = menuBarIcon
         }
         if let hotkey = values["hotkey"] {
             config.hotkey = hotkey
