@@ -91,5 +91,5 @@ def test_release_install(installer):
 
 
 if __name__ == "__main__":
-    installer = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parents[1] / "install.sh"
+    installer = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parents[2] / "install.sh"
     test_release_install(installer.resolve())
