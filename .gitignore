@@ -3,3 +3,10 @@
 .DS_Store
 Fantasma-*.zip
 Fantasma-notarize.zip
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*
