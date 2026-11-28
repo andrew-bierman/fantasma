@@ -54,10 +54,10 @@ and size across summons and relaunches. With `clear_on_open = true`
 (default) every summon starts a fresh shell, and that shell starts in the
 working directory of your last Fantasma shell (OSC 7).
 
-**Tiled windows** — `fantasma +new-window` opens a normal titled window that
-your tiling manager manages like any other app. ⌘W closes it. Both window
-kinds spawn in the last-used directory and switch theme live with system
-appearance.
+**Tiled windows** — ⌘N, ⌘T, and `fantasma +new-window` each open a separate
+window that your tiling manager manages like any other app. ⌘W closes it.
+Both window kinds spawn in the last-used directory and switch theme live
+with system appearance.
 
 **Find** — ⌘F opens the find bar. Enter / Shift+Enter walk the matches,
 Esc closes and refocuses the shell. Powered by the engine's native

@@ -96,21 +96,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A borderless window has no menu bar to carry key equivalents
         // (KTD6); normal windows need the same treatment for Cmd+W.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.function) == .command
+            guard let self, let focused = event.window,
+                  event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.function) == .command
             else { return event }
-            if event.window === self?.window {
+            let isOverlay = focused === self.window
+            let normal = self.normalWindows.first(where: { $0.window === focused })
+            guard isOverlay || normal != nil else { return event }
+
+            switch event.charactersIgnoringModifiers {
+            case "n", "t":
+                self.openNormalWindow()
+                return nil
+            case ",":
+                self.openSettings(nil)
+                return nil
+            default:
+                break
+            }
+
+            if isOverlay {
                 // Zoom keys first (⌘=/⌘+/⌘−/⌘0); they never collide with
                 // the window commands below.
                 if let direction = FontZoom.Direction(matching: event.charactersIgnoringModifiers) {
-                    self?.surface?.applyFontZoom(direction)
+                    self.surface?.applyFontZoom(direction)
                     return nil
                 }
                 switch event.charactersIgnoringModifiers {
                 case "f":
-                    self?.findBar?.toggle()
+                    self.findBar?.toggle()
                     return nil
                 case "w":
-                    self?.hide()
+                    self.hide()
                     return nil
                 case "q":
                     NSApp.terminate(nil)
@@ -119,7 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return event
                 }
             }
-            if let normal = self?.normalWindows.first(where: { $0.window === event.window }) {
+            if let normal {
                 if let direction = FontZoom.Direction(matching: event.charactersIgnoringModifiers) {
                     normal.applyFontZoom(direction)
                     return nil
@@ -131,15 +147,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case "w":
                     normal.close()
                     return nil
-                case ",":
-                    self?.openSettings(nil)
-                    return nil
                 default:
                     return event
                 }
-            } else if event.window === self?.window, event.charactersIgnoringModifiers == "," {
-                self?.openSettings(nil)
-                return nil
             }
             return event
         }
@@ -198,11 +208,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: ""
         ))
         appMenu.addItem(.separator())
-        appMenu.addItem(NSMenuItem(
+        let settingsItem = NSMenuItem(
             title: "Settings…",
             action: #selector(openSettings(_:)),
             keyEquivalent: ","
-        ))
+        )
+        settingsItem.target = self
+        appMenu.addItem(settingsItem)
         appMenu.addItem(.separator())
         appMenu.addItem(NSMenuItem(
             title: "Quit Fantasma",
@@ -215,11 +227,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.addItem(windowItem)
         let windowMenu = NSMenu(title: "Window")
         windowItem.submenu = windowMenu
-        windowMenu.addItem(NSMenuItem(
+        let newWindowItem = NSMenuItem(
             title: "New Tiled Window",
             action: #selector(newWindowRequested(_:)),
             keyEquivalent: "n"
-        ))
+        )
+        newWindowItem.target = self
+        windowMenu.addItem(newWindowItem)
         windowMenu.addItem(NSMenuItem(
             title: "Close Window",
             action: #selector(NSWindow.performClose(_:)),
@@ -301,7 +315,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func newWindowRequested(_ notification: Notification) {
+    @objc private func newWindowRequested(_ sender: Any?) {
         openNormalWindow()
     }
 
